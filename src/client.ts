@@ -3,6 +3,9 @@
  */
 
 import { APIError, AuthenticationError } from "./errors";
+
+export const VERSION = "0.3.9";
+
 import type {
   AgentReview,
   AgentVerdict,
@@ -155,6 +158,8 @@ export class RaySurfer {
     if (this.namespace) {
       headers["X-Raysurfer-Namespace"] = this.namespace;
     }
+    // SDK version for tracking
+    headers["X-Raysurfer-SDK-Version"] = `typescript/${VERSION}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);

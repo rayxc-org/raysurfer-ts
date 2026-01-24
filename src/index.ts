@@ -21,7 +21,7 @@ export type {
   StoreExecutionParams,
 } from "./client";
 // Direct API client (for advanced use cases)
-export { default as RaySurferDefault, RaySurfer } from "./client";
+export { default as RaySurferDefault, RaySurfer, VERSION } from "./client";
 // Errors
 export { APIError, AuthenticationError, RaySurferError } from "./errors";
 export type {
@@ -60,5 +60,3 @@ export type {
 } from "./types";
 // Types
 export { AgentVerdict, ExecutionState } from "./types";
-
-export const VERSION = "0.3.5";
