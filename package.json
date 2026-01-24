@@ -1,0 +1,59 @@
+{
+  "name": "raysurfer",
+  "version": "0.3.8",
+  "description": "Drop-in replacement for Claude Agent SDK with automatic code caching - just swap your import",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --declaration --outDir ./dist",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "code-blocks",
+    "retrieval",
+    "embeddings",
+    "claude",
+    "anthropic",
+    "raysurfer",
+    "caching",
+    "llm"
+  ],
+  "author": "Raymond Xu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raymondxu/raysurfer-ts"
+  },
+  "homepage": "https://raysurfer.com",
+  "bugs": {
+    "url": "https://github.com/raymondxu/raysurfer-ts/issues"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.6",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
