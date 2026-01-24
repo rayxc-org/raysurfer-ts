@@ -86,6 +86,10 @@ const response = await client.retrieve({ task: "Fetch GitHub user data" });
 
 Use `bun` for all TypeScript operations.
 
+## Before Completing Tasks
+
+Run `bun run lint` before marking a task as completed or pushing to git/npm.
+
 ## Building
 
 ```bash
