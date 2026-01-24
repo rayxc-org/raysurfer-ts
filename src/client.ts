@@ -294,11 +294,19 @@ export class RaySurfer {
 
     // Include cached code blocks for backend voting if provided
     if (cachedCodeBlocks && cachedCodeBlocks.length > 0) {
+      console.log(
+        `[raysurfer] Including ${cachedCodeBlocks.length} cached code blocks for voting:`,
+      );
+      cachedCodeBlocks.forEach((cb, i) => {
+        console.log(`[raysurfer]   ${i + 1}. ${cb.codeBlockId} (${cb.filename})`);
+      });
       data.cached_code_blocks = cachedCodeBlocks.map((cb) => ({
         code_block_id: cb.codeBlockId,
         filename: cb.filename,
         description: cb.description,
       }));
+    } else {
+      console.log(`[raysurfer] No cached code blocks to vote on`);
     }
 
     const result = await this.request<{
