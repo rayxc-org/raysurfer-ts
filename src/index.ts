@@ -12,56 +12,53 @@
  * Everything else works exactly the same. Set RAYSURFER_API_KEY to enable caching.
  */
 
-// Drop-in replacement for Claude Agent SDK (primary exports)
-export {
-  query,
-  ClaudeSDKClient,
-  RaysurferClient,
-  default as queryDefault,
-} from "./sdk-client";
+export type {
+  GetCodeFilesParams,
+  GetTaskPatternsParams,
+  RaySurferOptions,
+  RetrieveParams,
+  StoreCodeBlockParams,
+  StoreExecutionParams,
+} from "./client";
+// Direct API client (for advanced use cases)
+export { default as RaySurferDefault, RaySurfer } from "./client";
+// Errors
+export { APIError, AuthenticationError, RaySurferError } from "./errors";
 export type {
   QueryOptions,
   QueryParams,
   RaysurferAgentOptions,
 } from "./sdk-client";
-
-// Direct API client (for advanced use cases)
-export { RaySurfer, default as RaySurferDefault } from "./client";
+// Drop-in replacement for Claude Agent SDK (primary exports)
+export {
+  ClaudeSDKClient,
+  default as queryDefault,
+  query,
+  RaysurferClient,
+} from "./sdk-client";
 export type {
-  RaySurferOptions,
-  StoreCodeBlockParams,
-  StoreExecutionParams,
-  RetrieveParams,
-  GetCodeFilesParams,
-  GetTaskPatternsParams,
-} from "./client";
-
-// Types
-export { ExecutionState, AgentVerdict } from "./types";
-export type {
-  CodeBlock,
-  ExecutionIO,
   AgentReview,
-  ExecutionRecord,
-  BestMatch,
   AlternativeCandidate,
-  FewShotExample,
-  TaskPattern,
-  FileWritten,
-  StoreCodeBlockResponse,
-  StoreExecutionResponse,
+  BestMatch,
+  CodeBlock,
   CodeBlockMatch,
-  RetrieveCodeBlockResponse,
-  RetrieveBestResponse,
-  SubmitExecutionResultRequest,
-  SubmitExecutionResultResponse,
   CodeFile,
+  ExecutionIO,
+  ExecutionRecord,
+  FewShotExample,
+  FileWritten,
   GetCodeFilesResponse,
   RecordCacheUsageParams,
   RecordCacheUsageResponse,
+  RetrieveBestResponse,
+  RetrieveCodeBlockResponse,
+  StoreCodeBlockResponse,
+  StoreExecutionResponse,
+  SubmitExecutionResultRequest,
+  SubmitExecutionResultResponse,
+  TaskPattern,
 } from "./types";
-
-// Errors
-export { RaySurferError, APIError, AuthenticationError } from "./errors";
+// Types
+export { AgentVerdict, ExecutionState } from "./types";
 
 export const VERSION = "0.3.5";

@@ -14,7 +14,6 @@ import type {
   CodeBlockMatch,
   CodeFile,
   ExecutionIO,
-  ExecutionRecord,
   ExecutionState,
   FewShotExample,
   FileWritten,
@@ -128,14 +127,14 @@ export class RaySurfer {
   private async request<T>(
     method: string,
     path: string,
-    body?: unknown
+    body?: unknown,
   ): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
 
     if (this.apiKey) {
-      headers["Authorization"] = `Bearer ${this.apiKey}`;
+      headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
     // Add organization/workspace headers for namespace routing
@@ -189,7 +188,7 @@ export class RaySurfer {
 
   /** Store a new code block */
   async storeCodeBlock(
-    params: StoreCodeBlockParams
+    params: StoreCodeBlockParams,
   ): Promise<StoreCodeBlockResponse> {
     const data = {
       name: params.name,
@@ -223,7 +222,7 @@ export class RaySurfer {
 
   /** Store an execution record */
   async storeExecution(
-    params: StoreExecutionParams
+    params: StoreExecutionParams,
   ): Promise<StoreExecutionResponse> {
     const io: ExecutionIO = {
       inputData: params.inputData,
@@ -280,7 +279,7 @@ export class RaySurfer {
       codeBlockId: string;
       filename: string;
       description: string;
-    }>
+    }>,
   ): Promise<SubmitExecutionResultResponse> {
     const data: Record<string, unknown> = {
       task,
@@ -290,7 +289,7 @@ export class RaySurfer {
 
     // Include cached code blocks for backend voting if provided
     if (cachedCodeBlocks && cachedCodeBlocks.length > 0) {
-      data.cached_code_blocks = cachedCodeBlocks.map(cb => ({
+      data.cached_code_blocks = cachedCodeBlocks.map((cb) => ({
         code_block_id: cb.codeBlockId,
         filename: cb.filename,
         description: cb.description,
@@ -472,7 +471,9 @@ export class RaySurfer {
    * Also returns `addToLlmPrompt` - a pre-formatted string you can append
    * to your LLM system prompt to inform it about the cached files.
    */
-  async getCodeFiles(params: GetCodeFilesParams): Promise<GetCodeFilesResponse> {
+  async getCodeFiles(
+    params: GetCodeFilesParams,
+  ): Promise<GetCodeFilesResponse> {
     const data = {
       task: params.task,
       top_k: params.topK ?? 5,
@@ -519,7 +520,10 @@ export class RaySurfer {
     }));
 
     // Generate the addToLlmPrompt string (default cache dir: .raysurfer_code)
-    const addToLlmPrompt = this.formatLlmPrompt(files, params.cacheDir ?? ".raysurfer_code");
+    const addToLlmPrompt = this.formatLlmPrompt(
+      files,
+      params.cacheDir ?? ".raysurfer_code",
+    );
 
     return {
       files,
@@ -631,7 +635,9 @@ export class RaySurfer {
   /**
    * Retrieve execution records by code block ID, task, or verdict.
    */
-  async getExecutions(params: GetExecutionsParams = {}): Promise<RetrieveExecutionsResponse> {
+  async getExecutions(
+    params: GetExecutionsParams = {},
+  ): Promise<RetrieveExecutionsResponse> {
     const response = await this.request<{
       executions: Array<{
         id: string;
@@ -764,7 +770,9 @@ export class RaySurfer {
    *
    * Alias for retrieve() - searches for code blocks by task description.
    */
-  async getCodeSnips(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {
+  async getCodeSnips(
+    params: RetrieveParams,
+  ): Promise<RetrieveCodeBlockResponse> {
     return this.retrieve(params);
   }
 
@@ -781,9 +789,14 @@ export class RaySurfer {
       codeBlockId: string;
       filename: string;
       description: string;
-    }>
+    }>,
   ): Promise<SubmitExecutionResultResponse> {
-    return this.submitExecutionResult(task, filesWritten, succeeded, cachedCodeBlocks);
+    return this.submitExecutionResult(
+      task,
+      filesWritten,
+      succeeded,
+      cachedCodeBlocks,
+    );
   }
 
   /**

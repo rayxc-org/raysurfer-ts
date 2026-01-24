@@ -12,10 +12,16 @@
  * Everything else works exactly the same. Set RAYSURFER_API_KEY to enable caching.
  */
 
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
 import { RaySurfer } from "./client";
 import type { CodeFile, FileWritten, SnipsDesired } from "./types";
-import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from "fs";
-import { join } from "path";
 
 const DEFAULT_RAYSURFER_URL = "https://web-production-3d338.up.railway.app";
 const CACHE_DIR = ".raysurfer_code";
@@ -25,28 +31,50 @@ const FILE_MODIFY_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
 
 // Trackable file extensions for Bash output
 const TRACKABLE_EXTENSIONS = new Set([
-  ".py", ".js", ".ts", ".rb", ".go", ".rs", ".java", ".cpp", ".c", ".h",
-  ".pdf", ".docx", ".xlsx", ".csv", ".json", ".yaml", ".yml", ".xml",
-  ".html", ".css", ".md", ".txt", ".sh", ".sql"
+  ".py",
+  ".js",
+  ".ts",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".cpp",
+  ".c",
+  ".h",
+  ".pdf",
+  ".docx",
+  ".xlsx",
+  ".csv",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".xml",
+  ".html",
+  ".css",
+  ".md",
+  ".txt",
+  ".sh",
+  ".sql",
 ]);
 
 // Patterns to detect file outputs in Bash commands
 const BASH_OUTPUT_PATTERNS = [
-  />>\s*([^\s;&|]+)/g,      // append redirect
-  />\s*([^\s;&|]+)/g,       // redirect
-  /-o\s+([^\s;&|]+)/g,      // -o flag
-  /--output[=\s]+([^\s;&|]+)/g,  // --output flag
-  /savefig\(['"]([^'"]+)['"]\)/g,     // Python savefig
-  /to_csv\(['"]([^'"]+)['"]\)/g,      // Python to_csv
-  /to_excel\(['"]([^'"]+)['"]\)/g,    // Python to_excel
-  /write\(['"]([^'"]+)['"]\)/g,       // Python file write
+  />>\s*([^\s;&|]+)/g, // append redirect
+  />\s*([^\s;&|]+)/g, // redirect
+  /-o\s+([^\s;&|]+)/g, // -o flag
+  /--output[=\s]+([^\s;&|]+)/g, // --output flag
+  /savefig\(['"]([^'"]+)['"]\)/g, // Python savefig
+  /to_csv\(['"]([^'"]+)['"]\)/g, // Python to_csv
+  /to_excel\(['"]([^'"]+)['"]\)/g, // Python to_excel
+  /write\(['"]([^'"]+)['"]\)/g, // Python file write
 ];
 
 // Debug logger - enabled via RAYSURFER_DEBUG=true or debug option
 const createDebugLogger = (enabled: boolean) => ({
   log: (...args: unknown[]) => enabled && console.log("[raysurfer]", ...args),
   time: (label: string) => enabled && console.time(`[raysurfer] ${label}`),
-  timeEnd: (label: string) => enabled && console.timeEnd(`[raysurfer] ${label}`),
+  timeEnd: (label: string) =>
+    enabled && console.timeEnd(`[raysurfer] ${label}`),
   table: (data: unknown) => enabled && console.table(data),
   group: (label: string) => enabled && console.group(`[raysurfer] ${label}`),
   groupEnd: () => enabled && console.groupEnd(),
@@ -105,7 +133,10 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
 
   debug.group("Raysurfer Query Started");
   debug.log("Prompt:", prompt);
-  debug.log("Options:", { ...options, systemPrompt: options.systemPrompt || undefined });
+  debug.log("Options:", {
+    ...options,
+    systemPrompt: options.systemPrompt || undefined,
+  });
 
   // Check if caching should be enabled
   const apiKey = process.env.RAYSURFER_API_KEY;
@@ -126,16 +157,19 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
     for (const pattern of BASH_OUTPUT_PATTERNS) {
       // Reset regex lastIndex for global patterns
       pattern.lastIndex = 0;
-      let match;
-      while ((match = pattern.exec(command)) !== null) {
+      let match: RegExpExecArray | null = pattern.exec(command);
+      while (match !== null) {
         const filePath = match[1];
         if (filePath && filePath.length > 0) {
-          const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
+          const ext = filePath
+            .substring(filePath.lastIndexOf("."))
+            .toLowerCase();
           if (TRACKABLE_EXTENSIONS.has(ext)) {
             bashGeneratedFiles.add(filePath);
             debug.log(`  → Bash output file detected: ${filePath}`);
           }
         }
+        match = pattern.exec(command);
       }
     }
   };
@@ -159,24 +193,26 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
       const response = await raysurfer.getCodeFiles({
         task: prompt,
         topK: 5,
-        minVerdictScore: 0.3,  // Low bar - return best matches we have
+        minVerdictScore: 0.3, // Low bar - return best matches we have
         preferComplete: true,
-        cacheDir,  // Pass cacheDir to get full paths in addToLlmPrompt
+        cacheDir, // Pass cacheDir to get full paths in addToLlmPrompt
       });
       debug.timeEnd("Cache lookup");
       cachedFiles = response.files;
-      addToLlmPrompt = response.addToLlmPrompt;  // Use the pre-formatted prompt
+      addToLlmPrompt = response.addToLlmPrompt; // Use the pre-formatted prompt
 
       debug.log(`Found ${cachedFiles.length} cached files:`);
       if (cachedFiles.length > 0) {
-        debug.table(cachedFiles.map(f => ({
-          filename: f.filename,
-          similarity: `${Math.round(f.similarityScore * 100)}%`,
-          verdict: `${Math.round(f.verdictScore * 100)}%`,
-          combined: `${Math.round(f.combinedScore * 100)}%`,
-          thumbs: `${f.thumbsUp}/${f.thumbsDown}`,
-          sourceLength: `${f.source.length} chars`,
-        })));
+        debug.table(
+          cachedFiles.map((f) => ({
+            filename: f.filename,
+            similarity: `${Math.round(f.similarityScore * 100)}%`,
+            verdict: `${Math.round(f.verdictScore * 100)}%`,
+            combined: `${Math.round(f.combinedScore * 100)}%`,
+            thumbs: `${f.thumbsUp}/${f.thumbsDown}`,
+            sourceLength: `${f.source.length} chars`,
+          })),
+        );
 
         // Write cached files to disk so agent can Read them
         try {
@@ -200,7 +236,11 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
 
   // Build augmented system prompt using addToLlmPrompt from the API response
   const augmentedPrompt = (options.systemPrompt ?? "") + addToLlmPrompt;
-  debug.log("System prompt length:", options.systemPrompt?.length ?? 0, "chars");
+  debug.log(
+    "System prompt length:",
+    options.systemPrompt?.length ?? 0,
+    "chars",
+  );
   debug.log("Augmented prompt length:", augmentedPrompt.length, "chars");
   debug.log("Added from cache:", addToLlmPrompt.length, "chars");
   if (addToLlmPrompt) {
@@ -217,7 +257,7 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
   } catch {
     throw new Error(
       "Could not import @anthropic-ai/claude-agent-sdk. " +
-        "Install it with: npm install @anthropic-ai/claude-agent-sdk"
+        "Install it with: npm install @anthropic-ai/claude-agent-sdk",
     );
   }
 
@@ -244,21 +284,30 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
 
     // Full message logging with timestamp
     debug.log(`\n═══════════════════════════════════════════════════`);
-    debug.log(`Message #${messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype || "none"}`);
+    debug.log(
+      `Message #${messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype || "none"}`,
+    );
     debug.log(`═══════════════════════════════════════════════════`);
     debug.log(JSON.stringify(msg, null, 2));
 
     // Track file modification tool calls AND extract code from text responses
     if (msg.type === "assistant") {
       const content = msg.message as Record<string, unknown> | undefined;
-      const contentBlocks = content?.content as Array<Record<string, unknown>> | undefined;
+      const contentBlocks = content?.content as
+        | Array<Record<string, unknown>>
+        | undefined;
       if (contentBlocks) {
         for (const block of contentBlocks) {
           // Track file modification tools
-          if (block.type === "tool_use" && FILE_MODIFY_TOOLS.includes(block.name as string)) {
+          if (
+            block.type === "tool_use" &&
+            FILE_MODIFY_TOOLS.includes(block.name as string)
+          ) {
             const input = block.input as Record<string, unknown> | undefined;
             // Handle both file_path (Edit, Write) and notebook_path (NotebookEdit)
-            const filePath = (input?.file_path ?? input?.notebook_path) as string | undefined;
+            const filePath = (input?.file_path ?? input?.notebook_path) as
+              | string
+              | undefined;
             if (filePath) {
               debug.log(`  → ${block.name} tool detected:`, filePath);
               modifiedFilePaths.add(filePath);
@@ -277,12 +326,17 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
           // Extract code blocks from text responses
           if (block.type === "text") {
             const text = block.text as string;
-            const codeMatches = text.match(/```(?:typescript|javascript|ts|js)?\n?([\s\S]*?)\n?```/g);
+            const codeMatches = text.match(
+              /```(?:typescript|javascript|ts|js)?\n?([\s\S]*?)\n?```/g,
+            );
             if (codeMatches) {
               for (const match of codeMatches) {
                 // Extract just the code (remove the backticks and language identifier)
-                const code = match.replace(/```(?:typescript|javascript|ts|js)?\n?/, "").replace(/\n?```$/, "");
-                if (code.trim().length > 50) { // Only meaningful code blocks
+                const code = match
+                  .replace(/```(?:typescript|javascript|ts|js)?\n?/, "")
+                  .replace(/\n?```$/, "");
+                if (code.trim().length > 50) {
+                  // Only meaningful code blocks
                   generatedCodeBlocks.push(code.trim());
                   debug.log(`  → Extracted code block (${code.length} chars)`);
                 }
@@ -334,7 +388,11 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
           continue;
         }
         filesToCache.push({ path: filePath, content });
-        debug.log("  → Will cache file:", filePath, `(${content.length} chars)`);
+        debug.log(
+          "  → Will cache file:",
+          filePath,
+          `(${content.length} chars)`,
+        );
       } else {
         debug.log("  → File not found:", filePath);
       }
@@ -354,7 +412,11 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
         // Skip binary files
         if (!content.includes("\0")) {
           filesToCache.push({ path: filePath, content });
-          debug.log("  → Will cache Bash-generated file:", filePath, `(${content.length} chars)`);
+          debug.log(
+            "  → Will cache Bash-generated file:",
+            filePath,
+            `(${content.length} chars)`,
+          );
         }
       }
     } catch {
@@ -365,12 +427,17 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
   // Also add extracted code blocks as virtual files
   if (generatedCodeBlocks.length > 0) {
     // Use the largest code block (most likely to be the main generated code)
-    const largestBlock = generatedCodeBlocks.reduce((a, b) => a.length > b.length ? a : b);
+    const largestBlock = generatedCodeBlocks.reduce((a, b) =>
+      a.length > b.length ? a : b,
+    );
     filesToCache.push({
       path: "generated-code.ts",
       content: largestBlock,
     });
-    debug.log("  → Will cache generated code block:", `(${largestBlock.length} chars)`);
+    debug.log(
+      "  → Will cache generated code block:",
+      `(${largestBlock.length} chars)`,
+    );
   }
 
   debug.log("Total items to cache:", filesToCache.length);
@@ -378,7 +445,7 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
   // Upload generated code and trigger voting for cached code blocks (backend handles voting)
   if (cacheEnabled && raysurfer && taskSucceeded) {
     // Prepare cached code block info for backend voting
-    const cachedBlocksForVoting = cachedFiles.map(f => ({
+    const cachedBlocksForVoting = cachedFiles.map((f) => ({
       codeBlockId: f.codeBlockId,
       filename: f.filename,
       description: f.description,
@@ -387,12 +454,18 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
     if (filesToCache.length > 0 || cachedBlocksForVoting.length > 0) {
       try {
         debug.time("Cache upload + voting");
-        debug.log("Uploading", filesToCache.length, "files, voting for", cachedBlocksForVoting.length, "cached blocks...");
+        debug.log(
+          "Uploading",
+          filesToCache.length,
+          "files, voting for",
+          cachedBlocksForVoting.length,
+          "cached blocks...",
+        );
         await raysurfer.submitExecutionResult(
           prompt,
           filesToCache,
           true,
-          cachedBlocksForVoting.length > 0 ? cachedBlocksForVoting : undefined
+          cachedBlocksForVoting.length > 0 ? cachedBlocksForVoting : undefined,
         );
         debug.timeEnd("Cache upload + voting");
         debug.log("Cache upload successful, voting queued on backend");
