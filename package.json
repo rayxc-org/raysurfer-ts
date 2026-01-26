@@ -1,6 +1,6 @@
 {
   "name": "raysurfer",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "description": "Drop-in replacement for Claude Agent SDK with automatic code caching - just swap your import",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,11 +42,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/raymondxu/raysurfer-ts"
+    "url": "https://github.com/rayxc-org/raysurfer-ts"
   },
   "homepage": "https://raysurfer.com",
   "bugs": {
-    "url": "https://github.com/raymondxu/raysurfer-ts/issues"
+    "url": "https://github.com/rayxc-org/raysurfer-ts/issues"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": ">=0.1.0"
