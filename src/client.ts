@@ -229,12 +229,12 @@ export class RaySurfer {
   async storeExecution(
     params: StoreExecutionParams,
   ): Promise<StoreExecutionResponse> {
-    const io: ExecutionIO = {
-      inputData: params.inputData,
-      inputHash: "",
-      outputData: params.outputData,
-      outputHash: "",
-      outputType: typeof params.outputData,
+    const io = {
+      input_data: params.inputData,
+      input_hash: "",
+      output_data: params.outputData,
+      output_hash: "",
+      output_type: typeof params.outputData,
     };
 
     const data = {
