@@ -18,7 +18,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node && bun run build:types",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @anthropic-ai/claude-agent-sdk && bun run build:types",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir ./dist",
     "clean": "rm -rf dist",
     "lint": "biome check .",
