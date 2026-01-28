@@ -2,9 +2,14 @@
  * RaySurfer SDK client
  */
 
-import { APIError, AuthenticationError } from "./errors";
+import {
+  APIError,
+  AuthenticationError,
+  CacheUnavailableError,
+  RateLimitError,
+} from "./errors";
 
-export const VERSION = "0.3.9";
+export const VERSION = "0.4.0";
 
 import type {
   AgentReview,
@@ -32,6 +37,10 @@ import type {
 } from "./types";
 
 const DEFAULT_BASE_URL = "https://web-production-3d338.up.railway.app";
+
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY = 500;
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 export interface RaySurferOptions {
   /** RaySurfer API key */
@@ -160,30 +169,77 @@ export class RaySurfer {
     // SDK version for tracking
     headers["X-Raysurfer-SDK-Version"] = `typescript/${VERSION}`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    let lastError: Error | undefined;
 
-    try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      if (response.status === 401) {
-        throw new AuthenticationError();
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        // Auth errors are not retryable
+        if (response.status === 401) {
+          throw new AuthenticationError();
+        }
+
+        // Handle retryable status codes
+        if (RETRYABLE_STATUS_CODES.has(response.status)) {
+          const text = await response.text();
+
+          if (response.status === 429) {
+            const retryAfterHeader = response.headers.get("Retry-After");
+            const retryAfterMs = retryAfterHeader
+              ? parseFloat(retryAfterHeader) * 1000
+              : RETRY_BASE_DELAY * 2 ** attempt;
+
+            if (attempt < MAX_RETRIES) {
+              await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+              continue;
+            }
+            throw new RateLimitError(
+              text,
+              retryAfterHeader ? parseFloat(retryAfterHeader) : undefined,
+            );
+          }
+
+          if (attempt < MAX_RETRIES) {
+            const delay = RETRY_BASE_DELAY * 2 ** attempt;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            continue;
+          }
+          throw new CacheUnavailableError(text, response.status);
+        }
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new APIError(text, response.status);
+        }
+
+        return (await response.json()) as T;
+      } catch (error) {
+        // Retry on network errors (TypeError from fetch)
+        if (error instanceof TypeError && attempt < MAX_RETRIES) {
+          lastError = error;
+          const delay = RETRY_BASE_DELAY * 2 ** attempt;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // Re-throw non-retryable errors immediately
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new APIError(text, response.status);
-      }
-
-      return (await response.json()) as T;
-    } finally {
-      clearTimeout(timeoutId);
     }
+
+    // Should not reach here, but satisfy TypeScript
+    throw lastError ?? new APIError("Request failed after retries");
   }
 
   // =========================================================================
@@ -264,7 +320,7 @@ export class RaySurfer {
   }
 
   /**
-   * Submit raw execution result - backend handles all processing.
+   * Upload new code snippets from an execution result.
    *
    * This is the simplified API for agent integrations. Just send:
    * - The task that was executed
@@ -275,7 +331,7 @@ export class RaySurfer {
    * Backend handles: entrypoint detection, tag extraction, language detection,
    * deduplication, quality checks, storage, AND voting for cached code blocks.
    */
-  async submitExecutionResult(
+  async uploadNewCodeSnips(
     task: string,
     filesWritten: FileWritten[],
     succeeded: boolean,
@@ -293,21 +349,11 @@ export class RaySurfer {
 
     // Include cached code blocks for backend voting if provided
     if (cachedCodeBlocks && cachedCodeBlocks.length > 0) {
-      console.log(
-        `[raysurfer] Including ${cachedCodeBlocks.length} cached code blocks for voting:`,
-      );
-      cachedCodeBlocks.forEach((cb, i) => {
-        console.log(
-          `[raysurfer]   ${i + 1}. ${cb.codeBlockId} (${cb.filename})`,
-        );
-      });
       data.cached_code_blocks = cachedCodeBlocks.map((cb) => ({
         code_block_id: cb.codeBlockId,
         filename: cb.filename,
         description: cb.description,
       }));
-    } else {
-      console.log(`[raysurfer] No cached code blocks to vote on`);
     }
 
     const result = await this.request<{
@@ -327,8 +373,10 @@ export class RaySurfer {
   // Retrieve API
   // =========================================================================
 
-  /** Retrieve code blocks by task description (semantic search) */
-  async retrieve(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {
+  /** Get cached code snippets for a task (semantic search) */
+  async getCodeSnips(
+    params: RetrieveParams,
+  ): Promise<RetrieveCodeBlockResponse> {
     const data = {
       task: params.task,
       top_k: params.topK ?? 10,
@@ -741,13 +789,13 @@ export class RaySurfer {
   // =========================================================================
 
   /**
-   * Record that a cached code block was used for a task.
+   * Vote on whether a cached code snippet was useful for a task.
    *
    * This triggers background voting on the backend to assess whether
    * the cached code actually helped complete the task successfully.
    * The call returns immediately - voting happens asynchronously.
    */
-  async recordCacheUsage(params: {
+  async voteCodeSnip(params: {
     task: string;
     codeBlockId: string;
     codeBlockName: string;
@@ -773,59 +821,6 @@ export class RaySurfer {
       votePending: result.vote_pending,
       message: result.message,
     };
-  }
-
-  // =========================================================================
-  // Simplified API (aliases)
-  // =========================================================================
-
-  /**
-   * Get cached code snippets for a task.
-   *
-   * Alias for retrieve() - searches for code blocks by task description.
-   */
-  async getCodeSnips(
-    params: RetrieveParams,
-  ): Promise<RetrieveCodeBlockResponse> {
-    return this.retrieve(params);
-  }
-
-  /**
-   * Upload new code snippets from an execution.
-   *
-   * Alias for submitExecutionResult() - stores code files for future reuse.
-   */
-  async uploadNewCodeSnips(
-    task: string,
-    filesWritten: FileWritten[],
-    succeeded: boolean,
-    cachedCodeBlocks?: Array<{
-      codeBlockId: string;
-      filename: string;
-      description: string;
-    }>,
-  ): Promise<SubmitExecutionResultResponse> {
-    return this.submitExecutionResult(
-      task,
-      filesWritten,
-      succeeded,
-      cachedCodeBlocks,
-    );
-  }
-
-  /**
-   * Vote on whether a cached code snippet was useful.
-   *
-   * Alias for recordCacheUsage() - triggers background voting.
-   */
-  async voteCodeSnip(params: {
-    task: string;
-    codeBlockId: string;
-    codeBlockName: string;
-    codeBlockDescription: string;
-    succeeded: boolean;
-  }): Promise<{ success: boolean; votePending: boolean; message: string }> {
-    return this.recordCacheUsage(params);
   }
 
   // =========================================================================

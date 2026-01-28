@@ -23,7 +23,14 @@ export type {
 // Direct API client (for advanced use cases)
 export { default as RaySurferDefault, RaySurfer, VERSION } from "./client";
 // Errors
-export { APIError, AuthenticationError, RaySurferError } from "./errors";
+export {
+  APIError,
+  AuthenticationError,
+  CacheUnavailableError,
+  RateLimitError,
+  RaySurferError,
+  ValidationError,
+} from "./errors";
 export type {
   QueryOptions,
   QueryParams,
@@ -48,15 +55,16 @@ export type {
   FewShotExample,
   FileWritten,
   GetCodeFilesResponse,
-  RecordCacheUsageParams,
-  RecordCacheUsageResponse,
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
+  RetrieveExecutionsResponse,
   StoreCodeBlockResponse,
   StoreExecutionResponse,
   SubmitExecutionResultRequest,
   SubmitExecutionResultResponse,
   TaskPattern,
+  VoteCodeSnipParams,
+  VoteCodeSnipResponse,
 } from "./types";
 // Types
 export { AgentVerdict, ExecutionState } from "./types";

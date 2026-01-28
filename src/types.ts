@@ -207,8 +207,8 @@ export interface GetCodeFilesResponse {
   addToLlmPrompt: string;
 }
 
-/** Request to record cache usage */
-export interface RecordCacheUsageParams {
+/** Request to vote on a code snippet */
+export interface VoteCodeSnipParams {
   task: string;
   codeBlockId: string;
   codeBlockName: string;
@@ -216,8 +216,8 @@ export interface RecordCacheUsageParams {
   succeeded: boolean;
 }
 
-/** Response from recording cache usage */
-export interface RecordCacheUsageResponse {
+/** Response from voting on a code snippet */
+export interface VoteCodeSnipResponse {
   success: boolean;
   votePending: boolean;
   message: string;

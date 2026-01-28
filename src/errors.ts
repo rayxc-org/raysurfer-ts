@@ -28,3 +28,39 @@ export class AuthenticationError extends RaySurferError {
     this.name = "AuthenticationError";
   }
 }
+
+/** Cache backend is unreachable */
+export class CacheUnavailableError extends RaySurferError {
+  statusCode: number;
+
+  constructor(
+    message: string = "Cache backend is unreachable",
+    statusCode: number = 503,
+  ) {
+    super(message);
+    this.name = "CacheUnavailableError";
+    this.statusCode = statusCode;
+  }
+}
+
+/** Rate limit exceeded */
+export class RateLimitError extends RaySurferError {
+  retryAfter?: number;
+
+  constructor(message: string = "Rate limit exceeded", retryAfter?: number) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfter;
+  }
+}
+
+/** Validation failed */
+export class ValidationError extends RaySurferError {
+  field?: string;
+
+  constructor(message: string = "Validation failed", field?: string) {
+    super(message);
+    this.name = "ValidationError";
+    this.field = field;
+  }
+}

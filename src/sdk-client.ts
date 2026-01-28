@@ -12,13 +12,7 @@
  * Everything else works exactly the same. Set RAYSURFER_API_KEY to enable caching.
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { RaySurfer } from "./client";
 import type { CodeFile, FileWritten, SnipsDesired } from "./types";
@@ -142,6 +136,9 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
   const apiKey = process.env.RAYSURFER_API_KEY;
   const baseUrl = process.env.RAYSURFER_BASE_URL || DEFAULT_RAYSURFER_URL;
   const cacheEnabled = !!apiKey;
+  if (!cacheEnabled) {
+    console.warn("[raysurfer] RAYSURFER_API_KEY not set - caching disabled");
+  }
 
   debug.log("Cache enabled:", cacheEnabled);
   debug.log("Base URL:", baseUrl);
@@ -202,6 +199,11 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
       addToLlmPrompt = response.addToLlmPrompt; // Use the pre-formatted prompt
 
       debug.log(`Found ${cachedFiles.length} cached files:`);
+      console.log(
+        "[raysurfer] Cache hit:",
+        cachedFiles.length,
+        "snippets retrieved",
+      );
       if (cachedFiles.length > 0) {
         debug.table(
           cachedFiles.map((f) => ({
@@ -230,6 +232,10 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
       }
     } catch (error) {
       debug.log("Cache lookup failed:", error);
+      console.warn(
+        "[raysurfer] Cache unavailable:",
+        error instanceof Error ? error.message : error,
+      );
       // Fail silently - agent can still work without cache
     }
   }
@@ -461,7 +467,7 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
           cachedBlocksForVoting.length,
           "cached blocks...",
         );
-        await raysurfer.submitExecutionResult(
+        await raysurfer.uploadNewCodeSnips(
           prompt,
           filesToCache,
           true,
@@ -469,21 +475,19 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
         );
         debug.timeEnd("Cache upload + voting");
         debug.log("Cache upload successful, voting queued on backend");
+        console.log(
+          "[raysurfer] Cache upload successful:",
+          filesToCache.length,
+          "files stored",
+        );
       } catch (error) {
         debug.log("Cache upload failed:", error);
+        console.warn(
+          "[raysurfer] Cache upload failed:",
+          error instanceof Error ? error.message : error,
+        );
         // Fail silently
       }
-    }
-  }
-
-  // Clean up cached files
-  if (cachedFiles.length > 0) {
-    try {
-      const cacheDir = join(workDir, CACHE_DIR);
-      rmSync(cacheDir, { recursive: true, force: true });
-      debug.log("Cleaned up cache directory:", cacheDir);
-    } catch {
-      // Ignore cleanup errors
     }
   }
 
