@@ -340,12 +340,20 @@ export class RaySurfer {
       filename: string;
       description: string;
     }>,
+    autoVote: boolean = true,
+    executionLogs?: string,
   ): Promise<SubmitExecutionResultResponse> {
     const data: Record<string, unknown> = {
       task,
       files_written: filesWritten,
       succeeded,
+      auto_vote: autoVote,
     };
+
+    // Include execution logs for vote context if provided
+    if (executionLogs) {
+      data.execution_logs = executionLogs;
+    }
 
     // Include cached code blocks for backend voting if provided
     if (cachedCodeBlocks && cachedCodeBlocks.length > 0) {

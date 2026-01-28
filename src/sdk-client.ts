@@ -147,6 +147,7 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
   let cachedFiles: CodeFile[] = [];
   const modifiedFilePaths = new Set<string>();
   const bashGeneratedFiles = new Set<string>();
+  const executionLogs: string[] = [];
   let taskSucceeded = false;
 
   /** Extract potential output files from Bash commands */
@@ -329,6 +330,14 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
             }
           }
 
+          // Capture tool_result content as execution logs
+          if (block.type === "tool_result") {
+            const content = block.content as string | undefined;
+            if (content) {
+              executionLogs.push(content.slice(0, 5000));
+            }
+          }
+
           // Extract code blocks from text responses
           if (block.type === "text") {
             const text = block.text as string;
@@ -460,18 +469,25 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
     if (filesToCache.length > 0 || cachedBlocksForVoting.length > 0) {
       try {
         debug.time("Cache upload + voting");
+        // Join execution logs for vote context
+        const joinedLogs =
+          executionLogs.length > 0 ? executionLogs.join("\n---\n") : undefined;
         debug.log(
           "Uploading",
           filesToCache.length,
           "files, voting for",
           cachedBlocksForVoting.length,
-          "cached blocks...",
+          "cached blocks,",
+          executionLogs.length,
+          "log entries...",
         );
         await raysurfer.uploadNewCodeSnips(
           prompt,
           filesToCache,
           true,
           cachedBlocksForVoting.length > 0 ? cachedBlocksForVoting : undefined,
+          true, // autoVote
+          joinedLogs,
         );
         debug.timeEnd("Cache upload + voting");
         debug.log("Cache upload successful, voting queued on backend");
