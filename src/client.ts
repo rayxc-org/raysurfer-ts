@@ -16,7 +16,6 @@ import type {
   CodeBlock,
   CodeBlockMatch,
   CodeFile,
-  ExecutionIO,
   ExecutionState,
   FewShotExample,
   FileWritten,
@@ -298,7 +297,9 @@ export class RaySurfer {
         `[raysurfer] Including ${cachedCodeBlocks.length} cached code blocks for voting:`,
       );
       cachedCodeBlocks.forEach((cb, i) => {
-        console.log(`[raysurfer]   ${i + 1}. ${cb.codeBlockId} (${cb.filename})`);
+        console.log(
+          `[raysurfer]   ${i + 1}. ${cb.codeBlockId} (${cb.filename})`,
+        );
       });
       data.cached_code_blocks = cachedCodeBlocks.map((cb) => ({
         code_block_id: cb.codeBlockId,

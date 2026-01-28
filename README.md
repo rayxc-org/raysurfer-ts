@@ -136,7 +136,7 @@ for (const match of snips.codeBlocks) {
 // 2. Upload new code snippets after execution
 await client.uploadNewCodeSnips(
   "Fetch GitHub trending repos",
-  [{ filename: "fetch_repos.ts", content: "function fetch() { ... }" }],
+  [{ path: "fetch_repos.ts", content: "function fetch() { ... }" }],
   true // succeeded
 );
 
