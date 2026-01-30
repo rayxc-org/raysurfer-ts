@@ -14,6 +14,20 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type {
+  AccountInfo,
+  McpServerConfig,
+  McpServerStatus,
+  McpSetServersResult,
+  ModelInfo,
+  Options,
+  PermissionMode,
+  Query,
+  RewindFilesResult,
+  SDKMessage,
+  SDKUserMessage,
+  SlashCommand,
+} from "@anthropic-ai/claude-agent-sdk";
 import { RaySurfer } from "./client";
 import type { CodeFile, FileWritten, SnipsDesired } from "./types";
 
@@ -74,84 +88,249 @@ const createDebugLogger = (enabled: boolean) => ({
   groupEnd: () => enabled && console.groupEnd(),
 });
 
-/** Options for the query function - matches Claude Agent SDK */
-export interface QueryOptions {
-  model?: string;
-  workingDirectory?: string;
-  systemPrompt?: string;
-  permissionMode?: "default" | "acceptEdits" | "plan" | "bypassPermissions";
-  maxBudgetUsd?: number;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  maxTurns?: number;
-  env?: Record<string, string>;
+/** Raysurfer-specific options beyond Claude SDK Options */
+export interface RaysurferExtras {
   /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
   snipsDesired?: SnipsDesired;
   /** Custom namespace for code storage/retrieval */
   namespace?: string;
   /** Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var */
   debug?: boolean;
-  /** Path to Claude Code executable (required for SDK) */
-  pathToClaudeCodeExecutable?: string;
-  /** Allow dangerous permissions bypass */
-  allowDangerouslySkipPermissions?: boolean;
+  /** @deprecated Use `cwd` instead */
+  workingDirectory?: string;
 }
+
+/** Full query options: Claude SDK Options extended with Raysurfer extras */
+export type RaysurferQueryOptions = Options & RaysurferExtras;
+
+/**
+ * @deprecated Use RaysurferQueryOptions instead
+ */
+export type QueryOptions = RaysurferQueryOptions;
 
 /** Query parameters - matches Claude Agent SDK */
 export interface QueryParams {
-  prompt: string;
-  options?: QueryOptions;
+  prompt: string | AsyncIterable<SDKUserMessage>;
+  options?: RaysurferQueryOptions;
+}
+
+/** Augment a system prompt (string or preset form) with a cache addition */
+function augmentSystemPrompt(
+  systemPrompt: Options["systemPrompt"],
+  addition: string,
+): Options["systemPrompt"] {
+  if (!addition) return systemPrompt;
+  if (typeof systemPrompt === "string") return systemPrompt + addition;
+  if (systemPrompt?.type === "preset") {
+    return { ...systemPrompt, append: (systemPrompt.append ?? "") + addition };
+  }
+  return addition;
+}
+
+/** Extract raysurfer-specific extras from combined options, returning SDK options and extras separately */
+function splitOptions(options: RaysurferQueryOptions): {
+  sdkOptions: Options;
+  extras: RaysurferExtras;
+} {
+  const { snipsDesired, namespace, debug, workingDirectory, ...sdkOptions } =
+    options;
+  return {
+    sdkOptions,
+    extras: { snipsDesired, namespace, debug, workingDirectory },
+  };
 }
 
 /**
- * Drop-in replacement for Claude Agent SDK's query function with automatic caching.
- *
- * Usage is identical to the original:
- *
- *     import { query } from "raysurfer";
- *
- *     for await (const message of query({ prompt: "Hello" })) {
- *       console.log(message);
- *     }
- *
- * Set RAYSURFER_API_KEY environment variable to enable caching.
+ * RaysurferQuery wraps the Claude SDK Query with cache lookup and upload.
+ * Implements the Query interface (extends AsyncGenerator<SDKMessage, void>).
  */
-export async function* query(params: QueryParams): AsyncGenerator<unknown> {
-  const { prompt, options = {} } = params;
+class RaysurferQuery {
+  private _inner: Query | null = null;
+  private _initPromise: Promise<void> | null = null;
 
-  // Initialize debug logger
-  const debugEnabled = options.debug || process.env.RAYSURFER_DEBUG === "true";
-  const debug = createDebugLogger(debugEnabled);
+  // Cache state
+  private _raysurfer: RaySurfer | null = null;
+  private _cachedFiles: CodeFile[] = [];
+  private _modifiedFilePaths = new Set<string>();
+  private _bashGeneratedFiles = new Set<string>();
+  private _executionLogs: string[] = [];
+  private _taskSucceeded = false;
+  private _generatedCodeBlocks: string[] = [];
+  private _cacheUploadDone = false;
+  private _messageCount = 0;
+  private _startTime = 0;
 
-  debug.group("Raysurfer Query Started");
-  debug.log("Prompt:", prompt);
-  debug.log("Options:", {
-    ...options,
-    systemPrompt: options.systemPrompt || undefined,
-  });
+  // Config
+  private _promptText: string | null;
+  private _params: QueryParams;
+  private _debug: ReturnType<typeof createDebugLogger>;
+  private _cacheEnabled: boolean;
+  private _workDir: string;
+  private _apiKey: string | undefined;
+  private _baseUrl: string;
+  private _extras: RaysurferExtras;
+  private _sdkOptions: Options;
 
-  // Check if caching should be enabled
-  const apiKey = process.env.RAYSURFER_API_KEY;
-  const baseUrl = process.env.RAYSURFER_BASE_URL || DEFAULT_RAYSURFER_URL;
-  const cacheEnabled = !!apiKey;
-  if (!cacheEnabled) {
-    console.warn("[raysurfer] RAYSURFER_API_KEY not set - caching disabled");
+  constructor(params: QueryParams) {
+    this._params = params;
+    const options = params.options ?? {};
+    const { sdkOptions, extras } = splitOptions(options);
+    this._sdkOptions = sdkOptions;
+    this._extras = extras;
+
+    // Determine if prompt is a string (cacheable) or stream (not cacheable)
+    this._promptText = typeof params.prompt === "string" ? params.prompt : null;
+
+    // Debug logging
+    const debugEnabled = extras.debug || process.env.RAYSURFER_DEBUG === "true";
+    this._debug = createDebugLogger(debugEnabled);
+
+    // Cache config
+    this._apiKey = process.env.RAYSURFER_API_KEY;
+    this._baseUrl = process.env.RAYSURFER_BASE_URL || DEFAULT_RAYSURFER_URL;
+    this._cacheEnabled = !!this._apiKey;
+
+    // Working directory: cwd > workingDirectory (deprecated) > process.cwd()
+    if (extras.workingDirectory && !sdkOptions.cwd) {
+      console.warn(
+        "[raysurfer] workingDirectory is deprecated, use cwd instead",
+      );
+      this._sdkOptions.cwd = extras.workingDirectory;
+    }
+    this._workDir = this._sdkOptions.cwd || process.cwd();
   }
 
-  debug.log("Cache enabled:", cacheEnabled);
-  debug.log("Base URL:", baseUrl);
+  private async _initialize(): Promise<void> {
+    this._debug.group("Raysurfer Query Started");
+    this._debug.log("Prompt:", this._promptText ?? "<stream>");
+    this._debug.log("Cache enabled:", this._cacheEnabled);
+    this._debug.log("Base URL:", this._baseUrl);
 
-  let raysurfer: RaySurfer | null = null;
-  let cachedFiles: CodeFile[] = [];
-  const modifiedFilePaths = new Set<string>();
-  const bashGeneratedFiles = new Set<string>();
-  const executionLogs: string[] = [];
-  let taskSucceeded = false;
+    if (!this._cacheEnabled) {
+      console.warn("[raysurfer] RAYSURFER_API_KEY not set - caching disabled");
+    }
+
+    let addToLlmPrompt = "";
+
+    // Cache lookup (only for string prompts)
+    if (this._cacheEnabled && this._promptText) {
+      this._raysurfer = new RaySurfer({
+        apiKey: this._apiKey,
+        baseUrl: this._baseUrl,
+        snipsDesired: this._extras.snipsDesired,
+        namespace: this._extras.namespace,
+      });
+
+      try {
+        this._debug.time("Cache lookup");
+        const cacheDir = join(this._workDir, CACHE_DIR);
+        const response = await this._raysurfer.getCodeFiles({
+          task: this._promptText,
+          topK: 5,
+          minVerdictScore: 0.3,
+          preferComplete: true,
+          cacheDir,
+        });
+        this._debug.timeEnd("Cache lookup");
+        this._cachedFiles = response.files;
+        addToLlmPrompt = response.addToLlmPrompt;
+
+        this._debug.log(`Found ${this._cachedFiles.length} cached files:`);
+        console.log(
+          "[raysurfer] Cache hit:",
+          this._cachedFiles.length,
+          "snippets retrieved",
+        );
+
+        if (this._cachedFiles.length > 0) {
+          this._debug.table(
+            this._cachedFiles.map((f) => ({
+              filename: f.filename,
+              similarity: `${Math.round(f.similarityScore * 100)}%`,
+              verdict: `${Math.round(f.verdictScore * 100)}%`,
+              combined: `${Math.round(f.combinedScore * 100)}%`,
+              thumbs: `${f.thumbsUp}/${f.thumbsDown}`,
+              sourceLength: `${f.source.length} chars`,
+            })),
+          );
+
+          // Write cached files to disk so agent can Read them
+          try {
+            mkdirSync(cacheDir, { recursive: true });
+            for (const file of this._cachedFiles) {
+              const filePath = join(cacheDir, file.filename);
+              writeFileSync(filePath, file.source, "utf-8");
+              this._debug.log(`  → Wrote cached file: ${filePath}`);
+              this._modifiedFilePaths.add(filePath);
+            }
+          } catch (writeErr) {
+            this._debug.log("Failed to write cached files:", writeErr);
+          }
+        }
+      } catch (error) {
+        this._debug.log("Cache lookup failed:", error);
+        console.warn(
+          "[raysurfer] Cache unavailable:",
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
+    // Augment system prompt with cache information
+    const augmented = augmentSystemPrompt(
+      this._sdkOptions.systemPrompt,
+      addToLlmPrompt,
+    );
+    const augmentedOptions: Options = {
+      ...this._sdkOptions,
+      systemPrompt: augmented,
+    };
+
+    this._debug.log(
+      "Augmented prompt addition:",
+      addToLlmPrompt.length,
+      "chars",
+    );
+
+    // Import and create SDK query
+    let sdkQueryFn: (args: {
+      prompt: string | AsyncIterable<SDKUserMessage>;
+      options?: Options;
+    }) => Query;
+    try {
+      const sdk = await import("@anthropic-ai/claude-agent-sdk");
+      sdkQueryFn = sdk.query;
+    } catch {
+      throw new Error(
+        "Could not import @anthropic-ai/claude-agent-sdk. " +
+          "Install it with: npm install @anthropic-ai/claude-agent-sdk",
+      );
+    }
+
+    this._debug.time("Claude API call");
+    this._debug.log("Calling Claude Agent SDK...");
+    this._startTime = Date.now();
+
+    this._inner = sdkQueryFn({
+      prompt: this._params.prompt,
+      options: augmentedOptions,
+    });
+  }
+
+  private async _ensureInit(): Promise<Query> {
+    if (!this._inner) {
+      if (!this._initPromise) {
+        this._initPromise = this._initialize();
+      }
+      await this._initPromise;
+    }
+    // biome-ignore lint/style/noNonNullAssertion: guaranteed by _initialize
+    return this._inner!;
+  }
 
   /** Extract potential output files from Bash commands */
-  const extractBashOutputFiles = (command: string): void => {
+  private _extractBashOutputFiles(command: string): void {
     for (const pattern of BASH_OUTPUT_PATTERNS) {
-      // Reset regex lastIndex for global patterns
       pattern.lastIndex = 0;
       let match: RegExpExecArray | null = pattern.exec(command);
       while (match !== null) {
@@ -161,138 +340,27 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
             .substring(filePath.lastIndexOf("."))
             .toLowerCase();
           if (TRACKABLE_EXTENSIONS.has(ext)) {
-            bashGeneratedFiles.add(filePath);
-            debug.log(`  → Bash output file detected: ${filePath}`);
+            this._bashGeneratedFiles.add(filePath);
+            this._debug.log(`  → Bash output file detected: ${filePath}`);
           }
         }
         match = pattern.exec(command);
       }
     }
-  };
-
-  // Working directory for the session
-  const workDir = options.workingDirectory || process.cwd();
-
-  // Retrieve cached code if enabled
-  let addToLlmPrompt = "";
-  if (cacheEnabled) {
-    raysurfer = new RaySurfer({
-      apiKey,
-      baseUrl,
-      snipsDesired: options.snipsDesired,
-      namespace: options.namespace,
-    });
-    try {
-      debug.time("Cache lookup");
-      const cacheDir = join(workDir, CACHE_DIR);
-      const response = await raysurfer.getCodeFiles({
-        task: prompt,
-        topK: 5,
-        minVerdictScore: 0.3, // Low bar - return best matches we have
-        preferComplete: true,
-        cacheDir, // Pass cacheDir to get full paths in addToLlmPrompt
-      });
-      debug.timeEnd("Cache lookup");
-      cachedFiles = response.files;
-      addToLlmPrompt = response.addToLlmPrompt; // Use the pre-formatted prompt
-
-      debug.log(`Found ${cachedFiles.length} cached files:`);
-      console.log(
-        "[raysurfer] Cache hit:",
-        cachedFiles.length,
-        "snippets retrieved",
-      );
-      if (cachedFiles.length > 0) {
-        debug.table(
-          cachedFiles.map((f) => ({
-            filename: f.filename,
-            similarity: `${Math.round(f.similarityScore * 100)}%`,
-            verdict: `${Math.round(f.verdictScore * 100)}%`,
-            combined: `${Math.round(f.combinedScore * 100)}%`,
-            thumbs: `${f.thumbsUp}/${f.thumbsDown}`,
-            sourceLength: `${f.source.length} chars`,
-          })),
-        );
-
-        // Write cached files to disk so agent can Read them
-        try {
-          mkdirSync(cacheDir, { recursive: true });
-          for (const file of cachedFiles) {
-            const filePath = join(cacheDir, file.filename);
-            writeFileSync(filePath, file.source, "utf-8");
-            debug.log(`  → Wrote cached file: ${filePath}`);
-            // Track cached files as part of sandbox
-            modifiedFilePaths.add(filePath);
-          }
-        } catch (writeErr) {
-          debug.log("Failed to write cached files:", writeErr);
-        }
-      }
-    } catch (error) {
-      debug.log("Cache lookup failed:", error);
-      console.warn(
-        "[raysurfer] Cache unavailable:",
-        error instanceof Error ? error.message : error,
-      );
-      // Fail silently - agent can still work without cache
-    }
   }
 
-  // Build augmented system prompt using addToLlmPrompt from the API response
-  const augmentedPrompt = (options.systemPrompt ?? "") + addToLlmPrompt;
-  debug.log(
-    "System prompt length:",
-    options.systemPrompt?.length ?? 0,
-    "chars",
-  );
-  debug.log("Augmented prompt length:", augmentedPrompt.length, "chars");
-  debug.log("Added from cache:", addToLlmPrompt.length, "chars");
-  if (addToLlmPrompt) {
-    debug.log("\n--- AUGMENTED PROMPT ADDITION ---");
-    debug.log(addToLlmPrompt);
-    debug.log("--- END AUGMENTED PROMPT ---\n");
-  }
-
-  // Import and use Claude Agent SDK
-  let sdkQuery: (args: QueryParams) => AsyncIterable<unknown>;
-  try {
-    const sdk = await import("@anthropic-ai/claude-agent-sdk");
-    sdkQuery = sdk.query;
-  } catch {
-    throw new Error(
-      "Could not import @anthropic-ai/claude-agent-sdk. " +
-        "Install it with: npm install @anthropic-ai/claude-agent-sdk",
-    );
-  }
-
-  // Query with augmented prompt
-  debug.time("Claude API call");
-  debug.log("Calling Claude Agent SDK...");
-  const response = sdkQuery({
-    prompt,
-    options: {
-      ...options,
-      systemPrompt: augmentedPrompt,
-    },
-  });
-
-  // Stream responses and track modified files + generated code
-  let messageCount = 0;
-  const startTime = Date.now();
-  const generatedCodeBlocks: string[] = []; // Track code from text responses
-
-  for await (const message of response) {
-    messageCount++;
+  /** Track a message for file modifications and code block extraction */
+  private _trackMessage(message: SDKMessage): void {
+    this._messageCount++;
     const msg = message as Record<string, unknown>;
-    const elapsed = Date.now() - startTime;
+    const elapsed = Date.now() - this._startTime;
 
-    // Full message logging with timestamp
-    debug.log(`\n═══════════════════════════════════════════════════`);
-    debug.log(
-      `Message #${messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype || "none"}`,
+    this._debug.log(`\n═══════════════════════════════════════════════════`);
+    this._debug.log(
+      `Message #${this._messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype || "none"}`,
     );
-    debug.log(`═══════════════════════════════════════════════════`);
-    debug.log(JSON.stringify(msg, null, 2));
+    this._debug.log(`═══════════════════════════════════════════════════`);
+    this._debug.log(JSON.stringify(msg, null, 2));
 
     // Track file modification tool calls AND extract code from text responses
     if (msg.type === "assistant") {
@@ -308,13 +376,12 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
             FILE_MODIFY_TOOLS.includes(block.name as string)
           ) {
             const input = block.input as Record<string, unknown> | undefined;
-            // Handle both file_path (Edit, Write) and notebook_path (NotebookEdit)
             const filePath = (input?.file_path ?? input?.notebook_path) as
               | string
               | undefined;
             if (filePath) {
-              debug.log(`  → ${block.name} tool detected:`, filePath);
-              modifiedFilePaths.add(filePath);
+              this._debug.log(`  → ${block.name} tool detected:`, filePath);
+              this._modifiedFilePaths.add(filePath);
             }
           }
 
@@ -323,15 +390,15 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
             const input = block.input as Record<string, unknown> | undefined;
             const command = input?.command as string | undefined;
             if (command) {
-              extractBashOutputFiles(command);
+              this._extractBashOutputFiles(command);
             }
           }
 
           // Capture tool_result content as execution logs
           if (block.type === "tool_result") {
-            const content = block.content as string | undefined;
-            if (content) {
-              executionLogs.push(content.slice(0, 5000));
+            const resultContent = block.content as string | undefined;
+            if (resultContent) {
+              this._executionLogs.push(resultContent.slice(0, 5000));
             }
           }
 
@@ -343,14 +410,14 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
             );
             if (codeMatches) {
               for (const match of codeMatches) {
-                // Extract just the code (remove the backticks and language identifier)
                 const code = match
                   .replace(/```(?:typescript|javascript|ts|js)?\n?/, "")
                   .replace(/\n?```$/, "");
                 if (code.trim().length > 50) {
-                  // Only meaningful code blocks
-                  generatedCodeBlocks.push(code.trim());
-                  debug.log(`  → Extracted code block (${code.length} chars)`);
+                  this._generatedCodeBlocks.push(code.trim());
+                  this._debug.log(
+                    `  → Extracted code block (${code.length} chars)`,
+                  );
                 }
               }
             }
@@ -361,150 +428,268 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
 
     // Check for successful completion
     if (msg.type === "result" && msg.subtype === "success") {
-      taskSucceeded = true;
-      debug.timeEnd("Claude API call");
-      debug.log("Task succeeded!");
+      this._taskSucceeded = true;
+      this._debug.timeEnd("Claude API call");
+      this._debug.log("Task succeeded!");
       const result = msg as Record<string, unknown>;
-      debug.log("  Duration:", result.duration_ms, "ms");
-      debug.log("  Total cost:", result.total_cost_usd, "USD");
-      debug.log("  Turns:", result.num_turns);
+      this._debug.log("  Duration:", result.duration_ms, "ms");
+      this._debug.log("  Total cost:", result.total_cost_usd, "USD");
+      this._debug.log("  Turns:", result.num_turns);
     }
 
     if (msg.type === "result" && msg.subtype !== "success") {
-      debug.timeEnd("Claude API call");
-      debug.log("Task failed:", msg.subtype);
+      this._debug.timeEnd("Claude API call");
+      this._debug.log("Task failed:", msg.subtype);
     }
-
-    yield message;
   }
 
-  debug.log("Total messages streamed:", messageCount);
-  debug.log("Modified files tracked:", modifiedFilePaths.size);
-  debug.log("Code blocks extracted:", generatedCodeBlocks.length);
+  /** Upload generated code and trigger voting for cached code blocks */
+  private async _uploadCache(): Promise<void> {
+    if (this._cacheUploadDone) return;
+    this._cacheUploadDone = true;
 
-  // Read final content of modified files for caching
-  const filesToCache: FileWritten[] = [];
-  for (const filePath of modifiedFilePaths) {
-    // Skip cache dir files (those are pulled, not generated)
-    if (filePath.includes(CACHE_DIR)) {
-      debug.log("  → Skipping cached file:", filePath);
-      continue;
-    }
+    this._debug.log("Total messages streamed:", this._messageCount);
+    this._debug.log("Modified files tracked:", this._modifiedFilePaths.size);
+    this._debug.log("Code blocks extracted:", this._generatedCodeBlocks.length);
 
-    try {
-      if (existsSync(filePath)) {
-        const content = readFileSync(filePath, "utf-8");
-        // Skip binary files (contain null bytes)
-        if (content.includes("\0")) {
-          debug.log("  → Skipping binary file:", filePath);
-          continue;
-        }
-        filesToCache.push({ path: filePath, content });
-        debug.log(
-          "  → Will cache file:",
-          filePath,
-          `(${content.length} chars)`,
-        );
-      } else {
-        debug.log("  → File not found:", filePath);
+    // Read final content of modified files for caching
+    const filesToCache: FileWritten[] = [];
+    for (const filePath of this._modifiedFilePaths) {
+      if (filePath.includes(CACHE_DIR)) {
+        this._debug.log("  → Skipping cached file:", filePath);
+        continue;
       }
-    } catch (err) {
-      debug.log("  → Failed to read file:", filePath, err);
-    }
-  }
 
-  // Read and cache files generated by Bash commands
-  for (const filePath of bashGeneratedFiles) {
-    // Skip if already tracked via tool calls
-    if (modifiedFilePaths.has(filePath)) continue;
-
-    try {
-      if (existsSync(filePath)) {
-        const content = readFileSync(filePath, "utf-8");
-        // Skip binary files
-        if (!content.includes("\0")) {
+      try {
+        if (existsSync(filePath)) {
+          const content = readFileSync(filePath, "utf-8");
+          if (content.includes("\0")) {
+            this._debug.log("  → Skipping binary file:", filePath);
+            continue;
+          }
           filesToCache.push({ path: filePath, content });
-          debug.log(
-            "  → Will cache Bash-generated file:",
+          this._debug.log(
+            "  → Will cache file:",
             filePath,
             `(${content.length} chars)`,
           );
+        } else {
+          this._debug.log("  → File not found:", filePath);
+        }
+      } catch (err) {
+        this._debug.log("  → Failed to read file:", filePath, err);
+      }
+    }
+
+    // Read and cache files generated by Bash commands
+    for (const filePath of this._bashGeneratedFiles) {
+      if (this._modifiedFilePaths.has(filePath)) continue;
+      try {
+        if (existsSync(filePath)) {
+          const content = readFileSync(filePath, "utf-8");
+          if (!content.includes("\0")) {
+            filesToCache.push({ path: filePath, content });
+            this._debug.log(
+              "  → Will cache Bash-generated file:",
+              filePath,
+              `(${content.length} chars)`,
+            );
+          }
+        }
+      } catch {
+        this._debug.log("  → Failed to read Bash-generated file:", filePath);
+      }
+    }
+
+    // Also add extracted code blocks as virtual files
+    if (this._generatedCodeBlocks.length > 0) {
+      const largestBlock = this._generatedCodeBlocks.reduce((a, b) =>
+        a.length > b.length ? a : b,
+      );
+      filesToCache.push({
+        path: "generated-code.ts",
+        content: largestBlock,
+      });
+      this._debug.log(
+        "  → Will cache generated code block:",
+        `(${largestBlock.length} chars)`,
+      );
+    }
+
+    this._debug.log("Total items to cache:", filesToCache.length);
+
+    // Upload generated code and trigger voting
+    if (
+      this._cacheEnabled &&
+      this._raysurfer &&
+      this._taskSucceeded &&
+      this._promptText
+    ) {
+      const cachedBlocksForVoting = this._cachedFiles.map((f) => ({
+        codeBlockId: f.codeBlockId,
+        filename: f.filename,
+        description: f.description,
+      }));
+
+      if (filesToCache.length > 0 || cachedBlocksForVoting.length > 0) {
+        try {
+          this._debug.time("Cache upload + voting");
+          const joinedLogs =
+            this._executionLogs.length > 0
+              ? this._executionLogs.join("\n---\n")
+              : undefined;
+          this._debug.log(
+            "Uploading",
+            filesToCache.length,
+            "files, voting for",
+            cachedBlocksForVoting.length,
+            "cached blocks,",
+            this._executionLogs.length,
+            "log entries...",
+          );
+          await this._raysurfer.uploadNewCodeSnips(
+            this._promptText,
+            filesToCache,
+            true,
+            cachedBlocksForVoting.length > 0
+              ? cachedBlocksForVoting
+              : undefined,
+            true,
+            joinedLogs,
+          );
+          this._debug.timeEnd("Cache upload + voting");
+          this._debug.log("Cache upload successful, voting queued on backend");
+          console.log(
+            "[raysurfer] Cache upload successful:",
+            filesToCache.length,
+            "files stored",
+          );
+        } catch (error) {
+          this._debug.log("Cache upload failed:", error);
+          console.warn(
+            "[raysurfer] Cache upload failed:",
+            error instanceof Error ? error.message : error,
+          );
         }
       }
-    } catch {
-      debug.log("  → Failed to read Bash-generated file:", filePath);
     }
+
+    this._debug.groupEnd();
   }
 
-  // Also add extracted code blocks as virtual files
-  if (generatedCodeBlocks.length > 0) {
-    // Use the largest code block (most likely to be the main generated code)
-    const largestBlock = generatedCodeBlocks.reduce((a, b) =>
-      a.length > b.length ? a : b,
-    );
-    filesToCache.push({
-      path: "generated-code.ts",
-      content: largestBlock,
-    });
-    debug.log(
-      "  → Will cache generated code block:",
-      `(${largestBlock.length} chars)`,
-    );
-  }
+  // ===========================================================================
+  // AsyncGenerator protocol
+  // ===========================================================================
 
-  debug.log("Total items to cache:", filesToCache.length);
-
-  // Upload generated code and trigger voting for cached code blocks (backend handles voting)
-  if (cacheEnabled && raysurfer && taskSucceeded) {
-    // Prepare cached code block info for backend voting
-    const cachedBlocksForVoting = cachedFiles.map((f) => ({
-      codeBlockId: f.codeBlockId,
-      filename: f.filename,
-      description: f.description,
-    }));
-
-    if (filesToCache.length > 0 || cachedBlocksForVoting.length > 0) {
-      try {
-        debug.time("Cache upload + voting");
-        // Join execution logs for vote context
-        const joinedLogs =
-          executionLogs.length > 0 ? executionLogs.join("\n---\n") : undefined;
-        debug.log(
-          "Uploading",
-          filesToCache.length,
-          "files, voting for",
-          cachedBlocksForVoting.length,
-          "cached blocks,",
-          executionLogs.length,
-          "log entries...",
-        );
-        await raysurfer.uploadNewCodeSnips(
-          prompt,
-          filesToCache,
-          true,
-          cachedBlocksForVoting.length > 0 ? cachedBlocksForVoting : undefined,
-          true, // autoVote
-          joinedLogs,
-        );
-        debug.timeEnd("Cache upload + voting");
-        debug.log("Cache upload successful, voting queued on backend");
-        console.log(
-          "[raysurfer] Cache upload successful:",
-          filesToCache.length,
-          "files stored",
-        );
-      } catch (error) {
-        debug.log("Cache upload failed:", error);
-        console.warn(
-          "[raysurfer] Cache upload failed:",
-          error instanceof Error ? error.message : error,
-        );
-        // Fail silently
-      }
+  async next(
+    ...args: [] | [unknown]
+  ): Promise<IteratorResult<SDKMessage, void>> {
+    const inner = await this._ensureInit();
+    const result = await inner.next(...args);
+    if (!result.done) {
+      this._trackMessage(result.value);
+    } else {
+      await this._uploadCache();
     }
+    return result;
   }
 
-  debug.groupEnd();
+  async return(
+    value?: void | PromiseLike<void>,
+  ): Promise<IteratorResult<SDKMessage, void>> {
+    if (this._inner) {
+      await this._uploadCache();
+      return this._inner.return(value as undefined);
+    }
+    return { done: true as const, value: undefined as undefined };
+  }
+
+  async throw(e?: unknown): Promise<IteratorResult<SDKMessage, void>> {
+    if (this._inner) return this._inner.throw(e);
+    throw e;
+  }
+
+  [Symbol.asyncIterator](): this {
+    return this;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.close();
+  }
+
+  // ===========================================================================
+  // Query control methods — proxy to underlying SDK Query
+  // ===========================================================================
+
+  async interrupt(): Promise<void> {
+    return (await this._ensureInit()).interrupt();
+  }
+
+  async setPermissionMode(mode: PermissionMode): Promise<void> {
+    return (await this._ensureInit()).setPermissionMode(mode);
+  }
+
+  async setModel(model?: string): Promise<void> {
+    return (await this._ensureInit()).setModel(model);
+  }
+
+  async setMaxThinkingTokens(maxThinkingTokens: number | null): Promise<void> {
+    return (await this._ensureInit()).setMaxThinkingTokens(maxThinkingTokens);
+  }
+
+  async supportedCommands(): Promise<SlashCommand[]> {
+    return (await this._ensureInit()).supportedCommands();
+  }
+
+  async supportedModels(): Promise<ModelInfo[]> {
+    return (await this._ensureInit()).supportedModels();
+  }
+
+  async mcpServerStatus(): Promise<McpServerStatus[]> {
+    return (await this._ensureInit()).mcpServerStatus();
+  }
+
+  async accountInfo(): Promise<AccountInfo> {
+    return (await this._ensureInit()).accountInfo();
+  }
+
+  async rewindFiles(
+    userMessageId: string,
+    options?: { dryRun?: boolean },
+  ): Promise<RewindFilesResult> {
+    return (await this._ensureInit()).rewindFiles(userMessageId, options);
+  }
+
+  async setMcpServers(
+    servers: Record<string, McpServerConfig>,
+  ): Promise<McpSetServersResult> {
+    return (await this._ensureInit()).setMcpServers(servers);
+  }
+
+  async streamInput(stream: AsyncIterable<SDKUserMessage>): Promise<void> {
+    return (await this._ensureInit()).streamInput(stream);
+  }
+
+  close(): void {
+    if (this._inner) this._inner.close();
+  }
+}
+
+/**
+ * Drop-in replacement for Claude Agent SDK's query function with automatic caching.
+ *
+ * Usage is identical to the original:
+ *
+ *     import { query } from "raysurfer";
+ *
+ *     for await (const message of query({ prompt: "Hello" })) {
+ *       console.log(message);
+ *     }
+ *
+ * Set RAYSURFER_API_KEY environment variable to enable caching.
+ */
+export function query(params: QueryParams): Query {
+  return new RaysurferQuery(params) as Query;
 }
 
 /**
@@ -518,19 +703,19 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
  *     }
  */
 export class ClaudeSDKClient {
-  private options: QueryOptions;
+  private options: RaysurferQueryOptions;
 
-  constructor(options: QueryOptions = {}) {
+  constructor(options: RaysurferQueryOptions = {}) {
     this.options = options;
   }
 
-  async *query(prompt: string): AsyncGenerator<unknown> {
-    yield* query({ prompt, options: this.options });
+  query(prompt: string | AsyncIterable<SDKUserMessage>): Query {
+    return query({ prompt, options: this.options });
   }
 }
 
-// Alias for backwards compatibility
+// Backwards compatibility aliases
 export { ClaudeSDKClient as RaysurferClient };
-export type { QueryOptions as RaysurferAgentOptions };
+export type { RaysurferQueryOptions as RaysurferAgentOptions };
 
 export default query;
