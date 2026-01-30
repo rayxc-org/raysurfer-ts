@@ -4,7 +4,7 @@ Drop-in replacement for Claude Agent SDK with automatic code caching.
 
 ## Quick Start
 
-Simply swap your import:
+Two modes: high-level drop-in replacement for Claude Agent SDK, and low-level API for snippet pull/upload/vote.
 
 ```typescript
 // Before
@@ -64,22 +64,20 @@ For advanced use cases, use the low-level client:
 ```typescript
 import { RaySurfer } from "raysurfer";
 
-const client = new RaySurfer({
-  apiKey: "rs_...",
-  publicSnips: true,
-  snipsDesired: "company",
-});
+const client = new RaySurfer({ apiKey: "rs_..." });
 
-// Store a code block
-await client.storeCodeBlock({
-  name: "GitHub User Fetcher",
-  source: "function fetchUser(username) { ... }",
-  entrypoint: "fetchUser",
-  language: "typescript",
-});
+// Pull: retrieve cached code by user query
+const result = await client.getCodeFiles({ task: "Fetch GitHub user data" });
 
-// Retrieve code blocks
-const response = await client.retrieve({ task: "Fetch GitHub user data" });
+// Upload: store code + logs + query (voting triggered by default)
+await client.uploadNewCodeSnips(
+  "Fetch GitHub user data",
+  [{ path: "fetcher.ts", content: "function fetch() { ... }" }],
+  true,     // succeeded
+  undefined, // cachedCodeBlocks
+  true,     // autoVote
+  "Fetched user data successfully", // executionLogs
+);
 ```
 
 ## Package Managers
