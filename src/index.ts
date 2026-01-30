@@ -21,6 +21,7 @@ export type {
   GetTaskPatternsParams,
   RaySurferOptions,
   RetrieveParams,
+  SearchParams,
   StoreCodeBlockParams,
   StoreExecutionParams,
 } from "./client";
@@ -64,6 +65,8 @@ export type {
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
+  SearchMatch,
+  SearchResponse,
   StoreCodeBlockResponse,
   StoreExecutionResponse,
   SubmitExecutionResultRequest,

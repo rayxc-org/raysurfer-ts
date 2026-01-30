@@ -143,6 +143,12 @@ for (const match of snips.codeBlocks) {
   console.log(`${match.codeBlock.name}: ${match.score}`);
 }
 
+// Or use the unified search endpoint
+const searchResult = await client.search({ task: "Fetch GitHub trending repos" });
+for (const match of searchResult.matches) {
+  console.log(`${match.codeBlock.name}: ${match.combinedScore}`);
+}
+
 // 2. Upload new code snippets after execution
 await client.uploadNewCodeSnips(
   "Fetch GitHub trending repos",

@@ -19,7 +19,6 @@ import type {
   AutoReviewResponse,
   BestMatch,
   CodeBlock,
-  CodeBlockMatch,
   CodeFile,
   ExecutionState,
   FewShotExample,
@@ -29,6 +28,7 @@ import type {
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
+  SearchResponse,
   SnipsDesired,
   StoreCodeBlockResponse,
   StoreExecutionResponse,
@@ -107,6 +107,14 @@ export interface GetTaskPatternsParams {
   codeBlockId?: string;
   minThumbsUp?: number;
   topK?: number;
+}
+
+export interface SearchParams {
+  task: string;
+  topK?: number;
+  minVerdictScore?: number;
+  preferComplete?: boolean;
+  inputSchema?: Record<string, unknown>;
 }
 
 /**
@@ -374,53 +382,18 @@ export class RaySurfer {
   // Retrieve API
   // =========================================================================
 
-  /** Get cached code snippets for a task (semantic search) */
-  async getCodeSnips(
-    params: RetrieveParams,
-  ): Promise<RetrieveCodeBlockResponse> {
+  async search(params: SearchParams): Promise<SearchResponse> {
+    /** Unified search across all cached code using POST /api/retrieve/search. */
     const data = {
       task: params.task,
-      top_k: params.topK ?? 10,
-      min_verdict_score: params.minVerdictScore ?? 0.0,
+      top_k: params.topK ?? 5,
+      min_verdict_score: params.minVerdictScore ?? 0.3,
+      prefer_complete: params.preferComplete ?? false,
+      input_schema: params.inputSchema ?? null,
     };
 
     const result = await this.request<{
-      code_blocks: Array<{
-        code_block: Record<string, unknown>;
-        score: number;
-        verdict_score: number;
-        thumbs_up: number;
-        thumbs_down: number;
-        recent_executions?: unknown[];
-      }>;
-      total_found: number;
-    }>("POST", "/api/retrieve/code-blocks", data);
-
-    const codeBlocks: CodeBlockMatch[] = result.code_blocks.map((cb) => ({
-      codeBlock: this.parseCodeBlock(cb.code_block),
-      score: cb.score,
-      verdictScore: cb.verdict_score,
-      thumbsUp: cb.thumbs_up,
-      thumbsDown: cb.thumbs_down,
-      recentExecutions: (cb.recent_executions ?? []) as [],
-    }));
-
-    return {
-      codeBlocks,
-      totalFound: result.total_found,
-    };
-  }
-
-  /** Get the single best code block for a task using verdict-aware scoring */
-  async retrieveBest(params: RetrieveParams): Promise<RetrieveBestResponse> {
-    const data = {
-      task: params.task,
-      top_k: params.topK ?? 10,
-      min_verdict_score: params.minVerdictScore ?? 0.0,
-    };
-
-    const result = await this.request<{
-      best_match?: {
+      matches: Array<{
         code_block: Record<string, unknown>;
         combined_score: number;
         vector_score: number;
@@ -428,41 +401,97 @@ export class RaySurfer {
         error_resilience: number;
         thumbs_up: number;
         thumbs_down: number;
-      };
-      alternative_candidates: Array<{
-        code_block_id: string;
-        name: string;
-        combined_score: number;
-        reason: string;
+        filename: string;
+        language: string;
+        entrypoint: string;
+        dependencies: string[];
       }>;
-      retrieval_confidence: string;
-    }>("POST", "/api/retrieve/best-for-task", data);
+      total_found: number;
+      cache_hit: boolean;
+      search_namespaces: string[];
+    }>("POST", "/api/retrieve/search", data);
 
+    return {
+      matches: result.matches.map((m) => ({
+        codeBlock: this.parseCodeBlock(m.code_block),
+        combinedScore: m.combined_score,
+        vectorScore: m.vector_score,
+        verdictScore: m.verdict_score,
+        errorResilience: m.error_resilience,
+        thumbsUp: m.thumbs_up,
+        thumbsDown: m.thumbs_down,
+        filename: m.filename,
+        language: m.language,
+        entrypoint: m.entrypoint,
+        dependencies: m.dependencies ?? [],
+      })),
+      totalFound: result.total_found,
+      cacheHit: result.cache_hit,
+      searchNamespaces: result.search_namespaces ?? [],
+    };
+  }
+
+  /** Get cached code snippets for a task (semantic search) */
+  async getCodeSnips(
+    params: RetrieveParams,
+  ): Promise<RetrieveCodeBlockResponse> {
+    /** Delegates to unified search() and maps results to legacy CodeBlockMatch format. */
+    const response = await this.search({
+      task: params.task,
+      topK: params.topK ?? 10,
+      minVerdictScore: params.minVerdictScore ?? 0.0,
+    });
+    return {
+      codeBlocks: response.matches.map((m) => ({
+        codeBlock: m.codeBlock,
+        score: m.combinedScore,
+        verdictScore: m.verdictScore,
+        thumbsUp: m.thumbsUp,
+        thumbsDown: m.thumbsDown,
+        recentExecutions: [],
+      })),
+      totalFound: response.totalFound,
+    };
+  }
+
+  /** Get the single best code block for a task using verdict-aware scoring */
+  async retrieveBest(params: RetrieveParams): Promise<RetrieveBestResponse> {
+    /** Delegates to unified search() and maps results to legacy RetrieveBestResponse format. */
+    const response = await this.search({
+      task: params.task,
+      topK: params.topK ?? 10,
+      minVerdictScore: params.minVerdictScore ?? 0.0,
+    });
     let bestMatch: BestMatch | null = null;
-    if (result.best_match) {
+    let bestScore = 0;
+    const first = response.matches[0];
+    if (first) {
       bestMatch = {
-        codeBlock: this.parseCodeBlock(result.best_match.code_block),
-        combinedScore: result.best_match.combined_score,
-        vectorScore: result.best_match.vector_score,
-        verdictScore: result.best_match.verdict_score,
-        errorResilience: result.best_match.error_resilience,
-        thumbsUp: result.best_match.thumbs_up,
-        thumbsDown: result.best_match.thumbs_down,
+        codeBlock: first.codeBlock,
+        combinedScore: first.combinedScore,
+        vectorScore: first.vectorScore,
+        verdictScore: first.verdictScore,
+        errorResilience: first.errorResilience,
+        thumbsUp: first.thumbsUp,
+        thumbsDown: first.thumbsDown,
       };
+      bestScore = first.combinedScore;
     }
-
-    const alternativeCandidates: AlternativeCandidate[] =
-      result.alternative_candidates.map((alt) => ({
-        codeBlockId: alt.code_block_id,
-        name: alt.name,
-        combinedScore: alt.combined_score,
-        reason: alt.reason,
+    const alternativeCandidates: AlternativeCandidate[] = response.matches
+      .slice(1, 4)
+      .map((m) => ({
+        codeBlockId: m.codeBlock.id,
+        name: m.codeBlock.name,
+        combinedScore: m.combinedScore,
+        reason:
+          m.thumbsUp > 0
+            ? `${m.thumbsUp} thumbs up, ${m.thumbsDown} thumbs down`
+            : "No execution history",
       }));
-
     return {
       bestMatch,
       alternativeCandidates,
-      retrievalConfidence: result.retrieval_confidence,
+      retrievalConfidence: bestMatch ? String(bestScore.toFixed(4)) : "0",
     };
   }
 
@@ -523,75 +552,43 @@ export class RaySurfer {
     }));
   }
 
-  /**
-   * Get code files for a task, ready to download to sandbox.
-   *
-   * Returns code blocks with full source code, optimized for:
-   * - High verdict scores (proven to work)
-   * - More complete implementations (prefer longer source)
-   * - Task relevance (semantic similarity)
-   *
-   * Also returns `addToLlmPrompt` - a pre-formatted string you can append
-   * to your LLM system prompt to inform it about the cached files.
-   */
   async getCodeFiles(
     params: GetCodeFilesParams,
   ): Promise<GetCodeFilesResponse> {
-    const data = {
+    /**
+     * Get code files for a task, ready to download to sandbox.
+     * Delegates to unified search() and maps results to CodeFile format.
+     */
+    const response = await this.search({
       task: params.task,
-      top_k: params.topK ?? 5,
-      min_verdict_score: params.minVerdictScore ?? 0.3,
-      prefer_complete: params.preferComplete ?? true,
-    };
-
-    const result = await this.request<{
-      files: Array<{
-        code_block_id: string;
-        filename: string;
-        source: string;
-        entrypoint: string;
-        description: string;
-        input_schema: Record<string, unknown>;
-        output_schema: Record<string, unknown>;
-        language: string;
-        dependencies: string[];
-        verdict_score: number;
-        thumbs_up: number;
-        thumbs_down: number;
-        similarity_score: number;
-        combined_score: number;
-      }>;
-      task: string;
-      total_found: number;
-    }>("POST", "/api/retrieve/code-files", data);
-
-    const files: CodeFile[] = result.files.map((f) => ({
-      codeBlockId: f.code_block_id,
-      filename: f.filename,
-      source: f.source,
-      entrypoint: f.entrypoint,
-      description: f.description,
-      inputSchema: f.input_schema,
-      outputSchema: f.output_schema,
-      language: f.language,
-      dependencies: f.dependencies,
-      verdictScore: f.verdict_score,
-      thumbsUp: f.thumbs_up,
-      thumbsDown: f.thumbs_down,
-      similarityScore: f.similarity_score,
-      combinedScore: f.combined_score,
+      topK: params.topK ?? 5,
+      minVerdictScore: params.minVerdictScore ?? 0.3,
+      preferComplete: params.preferComplete ?? true,
+    });
+    const files: CodeFile[] = response.matches.map((m) => ({
+      codeBlockId: m.codeBlock.id,
+      filename: m.filename,
+      source: m.codeBlock.source,
+      entrypoint: m.entrypoint,
+      description: m.codeBlock.description,
+      inputSchema: m.codeBlock.inputSchema,
+      outputSchema: m.codeBlock.outputSchema,
+      language: m.language,
+      dependencies: m.dependencies,
+      verdictScore: m.verdictScore,
+      thumbsUp: m.thumbsUp,
+      thumbsDown: m.thumbsDown,
+      similarityScore: m.vectorScore,
+      combinedScore: m.combinedScore,
     }));
-
-    // Generate the addToLlmPrompt string (default cache dir: .raysurfer_code)
     const addToLlmPrompt = this.formatLlmPrompt(
       files,
       params.cacheDir ?? ".raysurfer_code",
     );
-
     return {
       files,
-      task: result.task,
-      totalFound: result.total_found,
+      task: params.task,
+      totalFound: response.totalFound,
       addToLlmPrompt,
     };
   }
@@ -822,6 +819,24 @@ export class RaySurfer {
       votePending: result.vote_pending,
       message: result.message,
     };
+  }
+
+  // =========================================================================
+  // Backwards-compatible aliases
+  // =========================================================================
+
+  async submitExecutionResult(
+    task: string,
+    filesWritten: FileWritten[],
+    succeeded: boolean,
+  ): Promise<SubmitExecutionResultResponse> {
+    /** Alias for uploadNewCodeSnips for backwards compatibility. */
+    return this.uploadNewCodeSnips(task, filesWritten, succeeded);
+  }
+
+  async retrieve(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {
+    /** Alias for getCodeSnips for backwards compatibility. */
+    return this.getCodeSnips(params);
   }
 
   // =========================================================================

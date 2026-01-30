@@ -207,6 +207,29 @@ export interface GetCodeFilesResponse {
   addToLlmPrompt: string;
 }
 
+/** A search match with full scoring from unified search */
+export interface SearchMatch {
+  codeBlock: CodeBlock;
+  combinedScore: number;
+  vectorScore: number;
+  verdictScore: number;
+  errorResilience: number;
+  thumbsUp: number;
+  thumbsDown: number;
+  filename: string;
+  language: string;
+  entrypoint: string;
+  dependencies: string[];
+}
+
+/** Response from unified search endpoint */
+export interface SearchResponse {
+  matches: SearchMatch[];
+  totalFound: number;
+  cacheHit: boolean;
+  searchNamespaces: string[];
+}
+
 /** Request to vote on a code snippet */
 export interface VoteCodeSnipParams {
   task: string;
