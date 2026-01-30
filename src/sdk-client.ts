@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { RaySurfer } from "./client";
 import type { CodeFile, FileWritten, SnipsDesired } from "./types";
 
-const DEFAULT_RAYSURFER_URL = "https://web-production-3d338.up.railway.app";
+const DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com";
 const CACHE_DIR = ".raysurfer_code";
 
 // File modification tools to track
@@ -85,8 +85,6 @@ export interface QueryOptions {
   disallowedTools?: string[];
   maxTurns?: number;
   env?: Record<string, string>;
-  /** Whether to include public/shared snippets in retrieval (default: false) */
-  publicSnips?: boolean;
   /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
   snipsDesired?: SnipsDesired;
   /** Custom namespace for code storage/retrieval */
@@ -181,7 +179,6 @@ export async function* query(params: QueryParams): AsyncGenerator<unknown> {
     raysurfer = new RaySurfer({
       apiKey,
       baseUrl,
-      publicSnips: options.publicSnips,
       snipsDesired: options.snipsDesired,
       namespace: options.namespace,
     });

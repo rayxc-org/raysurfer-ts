@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.4.1";
+export const VERSION = "0.4.2";
 
 import type {
   AgentReview,
@@ -36,7 +36,7 @@ import type {
   TaskPattern,
 } from "./types";
 
-const DEFAULT_BASE_URL = "https://web-production-3d338.up.railway.app";
+const DEFAULT_BASE_URL = "https://api.raysurfer.com";
 
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY = 500;
@@ -53,8 +53,6 @@ export interface RaySurferOptions {
   organizationId?: string;
   /** Workspace ID for client-specific namespace (enterprise tier only) */
   workspaceId?: string;
-  /** Whether to include public/shared snippets in retrieval (default: false) */
-  publicSnips?: boolean;
   /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
   snipsDesired?: SnipsDesired;
   /** Custom namespace for code storage/retrieval (overrides org-based namespacing) */
@@ -120,7 +118,6 @@ export class RaySurfer {
   private timeout: number;
   private organizationId?: string;
   private workspaceId?: string;
-  private publicSnips: boolean;
   private snipsDesired?: SnipsDesired;
   private namespace?: string;
 
@@ -130,7 +127,6 @@ export class RaySurfer {
     this.timeout = options.timeout ?? 60000;
     this.organizationId = options.organizationId;
     this.workspaceId = options.workspaceId;
-    this.publicSnips = options.publicSnips ?? false;
     this.snipsDesired = options.snipsDesired;
     this.namespace = options.namespace;
   }
@@ -156,9 +152,6 @@ export class RaySurfer {
       headers["X-Raysurfer-Workspace-Id"] = this.workspaceId;
     }
     // Add snippet retrieval scope headers
-    if (this.publicSnips) {
-      headers["X-Raysurfer-Public-Snips"] = "true";
-    }
     if (this.snipsDesired) {
       headers["X-Raysurfer-Snips-Desired"] = this.snipsDesired;
     }
