@@ -102,6 +102,12 @@ In order to publish updates for the npm package, run `bun publish`.
 bun publish
 ```
 
+## Documentation Style
+
+Wrap all documentation (README, CLAUDE.md, etc.) at 78 characters per line.
+Code blocks can exceed this when necessary for readability.
+
 ## Documentation Sync
 
-When making changes to this package, check `docs/` at the repo root to see if documentation needs updating.
+When making changes to this package, check `docs/` at the repo root to see if
+documentation needs updating.

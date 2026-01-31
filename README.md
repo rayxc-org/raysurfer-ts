@@ -40,10 +40,16 @@ for await (const message of query({
 }
 ```
 
-All Claude SDK types are re-exported from `raysurfer`, so you don't need a separate import:
+All Claude SDK types are re-exported from `raysurfer`, so you don't need a
+separate import:
 
 ```typescript
-import { query, type Options, type SDKMessage, type Query } from "raysurfer";
+import {
+  query,
+  type Options,
+  type SDKMessage,
+  type Query,
+} from "raysurfer";
 ```
 
 ## How It Works
@@ -52,7 +58,8 @@ import { query, type Options, type SDKMessage, type Query } from "raysurfer";
 2. **Injects into prompt**: Agent sees proven code snippets
 3. **After success**: New code is cached for next time
 
-Caching is enabled automatically when `RAYSURFER_API_KEY` is set. Without it, behaves exactly like the original SDK.
+Caching is enabled automatically when `RAYSURFER_API_KEY` is set. Without it,
+behaves exactly like the original SDK.
 
 ## Class-based API
 
@@ -122,11 +129,11 @@ const enterpriseClient = new ClaudeSDKClient({
 });
 ```
 
-| Configuration | Required Tier |
-|--------------|---------------|
-| Default (public only) | FREE |
-| `snipsDesired: "company"` | TEAM or ENTERPRISE |
-| `snipsDesired: "client"` | ENTERPRISE only |
+| Configuration                | Required Tier       |
+|------------------------------|---------------------|
+| Default (public only)        | FREE                |
+| `snipsDesired: "company"`    | TEAM or ENTERPRISE  |
+| `snipsDesired: "client"`     | ENTERPRISE only     |
 
 ## Low-Level API
 
@@ -138,13 +145,17 @@ import { RaySurfer } from "raysurfer";
 const client = new RaySurfer({ apiKey: "your_api_key" });
 
 // 1. Get cached code snippets for a task
-const snips = await client.getCodeSnips({ task: "Fetch GitHub trending repos" });
+const snips = await client.getCodeSnips({
+  task: "Fetch GitHub trending repos",
+});
 for (const match of snips.codeBlocks) {
   console.log(`${match.codeBlock.name}: ${match.score}`);
 }
 
 // Or use the unified search endpoint
-const searchResult = await client.search({ task: "Fetch GitHub trending repos" });
+const searchResult = await client.search({
+  task: "Fetch GitHub trending repos",
+});
 for (const match of searchResult.matches) {
   console.log(`${match.codeBlock.name}: ${match.combinedScore}`);
 }
