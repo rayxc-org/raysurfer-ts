@@ -127,6 +127,14 @@ export interface FileWritten {
   content: string;
 }
 
+/** A log file for bulk grading (content may be base64) */
+export interface LogFile {
+  path: string;
+  content: string;
+  encoding?: "utf-8" | "base64";
+  contentType?: string;
+}
+
 // Response types
 
 export interface StoreCodeBlockResponse {
@@ -173,6 +181,21 @@ export interface SubmitExecutionResultResponse {
   success: boolean;
   codeBlocksStored: number;
   message: string;
+}
+
+export interface BulkExecutionResultRequest {
+  prompts: string[];
+  filesWritten: FileWritten[];
+  logFiles?: LogFile[];
+  autoVote?: boolean;
+}
+
+export interface BulkExecutionResultResponse {
+  success: boolean;
+  codeBlocksStored: number;
+  votesQueued: number;
+  message: string;
+  statusUrl?: string | null;
 }
 
 // SDK-specific types

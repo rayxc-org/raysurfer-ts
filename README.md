@@ -167,6 +167,14 @@ await client.uploadNewCodeSnips(
   true // succeeded
 );
 
+// 2b. Bulk upload prompts/logs/code for sandboxed grading
+await client.uploadBulkCodeSnips(
+  ["Build a CLI tool", "Add CSV support"],
+  [{ path: "cli.ts", content: "function main() { ... }" }],
+  [{ path: "logs/run.log", content: "Task completed", encoding: "utf-8" }],
+  true
+);
+
 // 3. Vote on whether a cached snippet was useful
 await client.voteCodeSnip({
   task: "Fetch GitHub trending repos",

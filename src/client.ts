@@ -18,11 +18,13 @@ import type {
   AutoReviewParams,
   AutoReviewResponse,
   BestMatch,
+  BulkExecutionResultResponse,
   CodeBlock,
   CodeFile,
   ExecutionState,
   FewShotExample,
   FileWritten,
+  LogFile,
   GetCodeFilesResponse,
   GetExecutionsParams,
   RetrieveBestResponse,
@@ -375,6 +377,59 @@ export class RaySurfer {
       success: result.success,
       codeBlocksStored: result.code_blocks_stored,
       message: result.message,
+    };
+  }
+
+  /**
+   * Bulk upload code files, prompts, and logs for sandboxed grading.
+   *
+   * The backend runs a grader that votes thumbs up/down for each code file.
+   */
+  async uploadBulkCodeSnips(
+    prompts: string[],
+    filesWritten: FileWritten[],
+    logFiles?: Array<LogFile | { path: string; content: string | Buffer; encoding?: "utf-8" | "base64"; contentType?: string }>,
+    autoVote: boolean = true,
+  ): Promise<BulkExecutionResultResponse> {
+    const normalizedLogs =
+      logFiles?.map((log) => {
+        const content =
+          typeof log.content === "string"
+            ? log.content
+            : Buffer.from(log.content).toString("base64");
+        const encoding =
+          typeof log.content === "string"
+            ? log.encoding ?? "utf-8"
+            : "base64";
+        return {
+          path: log.path,
+          content,
+          encoding,
+          content_type: log.contentType,
+        };
+      }) ?? [];
+
+    const data: Record<string, unknown> = {
+      prompts,
+      files_written: filesWritten,
+      log_files: normalizedLogs.length > 0 ? normalizedLogs : undefined,
+      auto_vote: autoVote,
+    };
+
+    const result = await this.request<{
+      success: boolean;
+      code_blocks_stored: number;
+      votes_queued: number;
+      message: string;
+      status_url?: string | null;
+    }>("POST", "/api/store/bulk-execution-result", data);
+
+    return {
+      success: result.success,
+      codeBlocksStored: result.code_blocks_stored,
+      votesQueued: result.votes_queued,
+      message: result.message,
+      statusUrl: result.status_url ?? null,
     };
   }
 
