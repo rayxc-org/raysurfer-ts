@@ -175,6 +175,8 @@ export interface SubmitExecutionResultRequest {
   task: string;
   filesWritten: FileWritten[];
   succeeded: boolean;
+  /** URL to the finished run (e.g. logs page, CI run, LangSmith trace) */
+  runUrl?: string;
 }
 
 export interface SubmitExecutionResultResponse {

@@ -345,6 +345,7 @@ export class RaySurfer {
     }>,
     autoVote: boolean = true,
     executionLogs?: string,
+    runUrl?: string,
   ): Promise<SubmitExecutionResultResponse> {
     const data: Record<string, unknown> = {
       task,
@@ -365,6 +366,11 @@ export class RaySurfer {
         filename: cb.filename,
         description: cb.description,
       }));
+    }
+
+    // Include run URL for linking to finished run logs
+    if (runUrl) {
+      data.run_url = runUrl;
     }
 
     const result = await this.request<{
