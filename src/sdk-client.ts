@@ -547,16 +547,35 @@ class RaysurferQuery {
             this._executionLogs.length,
             "log entries...",
           );
-          await this._raysurfer.uploadNewCodeSnips(
-            this._promptText,
-            filesToCache,
-            true,
-            cachedBlocksForVoting.length > 0
-              ? cachedBlocksForVoting
-              : undefined,
-            true,
-            joinedLogs,
-          );
+          // Upload each file individually (single-file endpoint)
+          // Pass cachedCodeBlocks only on the first call to trigger voting once
+          for (let i = 0; i < filesToCache.length; i++) {
+            const file = filesToCache[i]!;
+            await this._raysurfer.uploadNewCodeSnips(
+              this._promptText,
+              file,
+              true,
+              i === 0 && cachedBlocksForVoting.length > 0
+                ? cachedBlocksForVoting
+                : undefined,
+              true,
+              joinedLogs,
+            );
+          }
+          // If no files to upload but there are cached blocks to vote on,
+          // still trigger voting via a dummy upload
+          if (filesToCache.length === 0 && cachedBlocksForVoting.length > 0) {
+            // Vote on cached blocks via the voting API directly
+            for (const cb of cachedBlocksForVoting) {
+              await this._raysurfer.voteCodeSnip({
+                task: this._promptText,
+                codeBlockId: cb.codeBlockId,
+                codeBlockName: cb.filename,
+                codeBlockDescription: cb.description,
+                succeeded: true,
+              });
+            }
+          }
           this._debug.timeEnd("Cache upload + voting");
           this._debug.log("Cache upload successful, voting queued on backend");
           console.log(

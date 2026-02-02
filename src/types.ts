@@ -173,7 +173,7 @@ export interface RetrieveBestResponse {
 
 export interface SubmitExecutionResultRequest {
   task: string;
-  filesWritten: FileWritten[];
+  fileWritten: FileWritten;
   succeeded: boolean;
   /** URL to the finished run (e.g. logs page, CI run, LangSmith trace) */
   runUrl?: string;

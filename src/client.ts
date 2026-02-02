@@ -323,20 +323,22 @@ export class RaySurfer {
   }
 
   /**
-   * Upload new code snippets from an execution result.
+   * Upload a single code file from an execution result.
    *
    * This is the simplified API for agent integrations. Just send:
    * - The task that was executed
-   * - Files that were written during execution
+   * - The file that was written during execution
    * - Whether the task succeeded
    * - (Optional) Cached code blocks that were retrieved and used
    *
    * Backend handles: entrypoint detection, tag extraction, language detection,
    * deduplication, quality checks, storage, AND voting for cached code blocks.
+   *
+   * For uploading multiple files at once, use uploadBulkCodeSnips().
    */
   async uploadNewCodeSnips(
     task: string,
-    filesWritten: FileWritten[],
+    fileWritten: FileWritten,
     succeeded: boolean,
     cachedCodeBlocks?: Array<{
       codeBlockId: string;
@@ -349,7 +351,7 @@ export class RaySurfer {
   ): Promise<SubmitExecutionResultResponse> {
     const data: Record<string, unknown> = {
       task,
-      files_written: filesWritten,
+      file_written: fileWritten,
       succeeded,
       auto_vote: autoVote,
     };
@@ -896,11 +898,11 @@ export class RaySurfer {
 
   async submitExecutionResult(
     task: string,
-    filesWritten: FileWritten[],
+    fileWritten: FileWritten,
     succeeded: boolean,
   ): Promise<SubmitExecutionResultResponse> {
     /** Alias for uploadNewCodeSnips for backwards compatibility. */
-    return this.uploadNewCodeSnips(task, filesWritten, succeeded);
+    return this.uploadNewCodeSnips(task, fileWritten, succeeded);
   }
 
   async retrieve(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {
