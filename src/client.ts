@@ -24,9 +24,9 @@ import type {
   ExecutionState,
   FewShotExample,
   FileWritten,
-  LogFile,
   GetCodeFilesResponse,
   GetExecutionsParams,
+  LogFile,
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
@@ -388,7 +388,15 @@ export class RaySurfer {
   async uploadBulkCodeSnips(
     prompts: string[],
     filesWritten: FileWritten[],
-    logFiles?: Array<LogFile | { path: string; content: string | Buffer; encoding?: "utf-8" | "base64"; contentType?: string }>,
+    logFiles?: Array<
+      | LogFile
+      | {
+          path: string;
+          content: string | Buffer;
+          encoding?: "utf-8" | "base64";
+          contentType?: string;
+        }
+    >,
     autoVote: boolean = true,
   ): Promise<BulkExecutionResultResponse> {
     const normalizedLogs =
@@ -399,7 +407,7 @@ export class RaySurfer {
             : Buffer.from(log.content).toString("base64");
         const encoding =
           typeof log.content === "string"
-            ? log.encoding ?? "utf-8"
+            ? (log.encoding ?? "utf-8")
             : "base64";
         return {
           path: log.path,
