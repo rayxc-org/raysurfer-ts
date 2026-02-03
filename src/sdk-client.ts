@@ -90,12 +90,8 @@ const createDebugLogger = (enabled: boolean) => ({
 
 /** Raysurfer-specific options beyond Claude SDK Options */
 export interface RaysurferExtras {
-  /** Organization ID for dedicated namespace (team/enterprise) */
-  organizationId?: string;
-  /** Workspace ID for client-specific namespace (enterprise only) */
+  /** Workspace ID for per-customer isolation (enterprise only) */
   workspaceId?: string;
-  /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
-  snipsDesired?: SnipsDesired;
   /** Custom namespace for code storage/retrieval */
   namespace?: string;
   /** Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var */
@@ -136,21 +132,12 @@ function splitOptions(options: RaysurferQueryOptions): {
   sdkOptions: Options;
   extras: RaysurferExtras;
 } {
-  const {
-    organizationId,
-    workspaceId,
-    snipsDesired,
-    namespace,
-    debug,
-    workingDirectory,
-    ...sdkOptions
-  } = options;
+  const { workspaceId, namespace, debug, workingDirectory, ...sdkOptions } =
+    options;
   return {
     sdkOptions,
     extras: {
-      organizationId,
       workspaceId,
-      snipsDesired,
       namespace,
       debug,
       workingDirectory,
@@ -232,12 +219,12 @@ class RaysurferQuery {
 
     // Cache lookup (only for string prompts)
     if (this._cacheEnabled && this._promptText) {
+      // Auto-set snipsDesired="client" when workspaceId is provided
       this._raysurfer = new RaySurfer({
         apiKey: this._apiKey,
         baseUrl: this._baseUrl,
-        organizationId: this._extras.organizationId,
         workspaceId: this._extras.workspaceId,
-        snipsDesired: this._extras.snipsDesired,
+        snipsDesired: this._extras.workspaceId ? "client" : undefined,
         namespace: this._extras.namespace,
       });
 
