@@ -73,9 +73,10 @@ const result = await client.getCodeFiles({ task: "Fetch GitHub user data" });
 await client.uploadNewCodeSnip(
   "Fetch GitHub user data",
   { path: "fetcher.ts", content: "function fetch() { ... }" },
-  true,     // succeeded
+  true,      // succeeded
   undefined, // cachedCodeBlocks
-  true,     // autoVote
+  true,      // useRaysurferAiVoting
+  undefined, // userVote
   "Fetched user data successfully", // executionLogs
 );
 ```

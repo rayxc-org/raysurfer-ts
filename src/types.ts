@@ -175,6 +175,10 @@ export interface SubmitExecutionResultRequest {
   task: string;
   fileWritten: FileWritten;
   succeeded: boolean;
+  /** Let Raysurfer AI vote on stored blocks (default true). Ignored when userVote is provided. */
+  useRaysurferAiVoting?: boolean;
+  /** User-provided vote: 1 for thumbs up, -1 for thumbs down. When provided, AI voting is skipped. */
+  userVote?: number;
   /** URL to the finished run (e.g. logs page, CI run, LangSmith trace) */
   runUrl?: string;
 }
@@ -189,7 +193,10 @@ export interface BulkExecutionResultRequest {
   prompts: string[];
   filesWritten: FileWritten[];
   logFiles?: LogFile[];
-  autoVote?: boolean;
+  /** Let Raysurfer AI vote on stored blocks (default true). Ignored when userVotes is provided. */
+  useRaysurferAiVoting?: boolean;
+  /** Dict of filename to vote (1 for thumbs up, -1 for thumbs down). When provided, AI voting is skipped. */
+  userVotes?: Record<string, number>;
 }
 
 export interface BulkExecutionResultResponse {

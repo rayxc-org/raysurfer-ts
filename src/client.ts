@@ -345,7 +345,8 @@ export class RaySurfer {
       filename: string;
       description: string;
     }>,
-    autoVote: boolean = true,
+    useRaysurferAiVoting: boolean = true,
+    userVote?: number,
     executionLogs?: string,
     runUrl?: string,
   ): Promise<SubmitExecutionResultResponse> {
@@ -353,8 +354,13 @@ export class RaySurfer {
       task,
       file_written: fileWritten,
       succeeded,
-      auto_vote: autoVote,
+      use_raysurfer_ai_voting: useRaysurferAiVoting,
     };
+
+    // User-provided vote (skips AI voting automatically)
+    if (userVote !== undefined) {
+      data.user_vote = userVote;
+    }
 
     // Include execution logs for vote context if provided
     if (executionLogs) {
@@ -408,7 +414,8 @@ export class RaySurfer {
           contentType?: string;
         }
     >,
-    autoVote: boolean = true,
+    useRaysurferAiVoting: boolean = true,
+    userVotes?: Record<string, number>,
   ): Promise<BulkExecutionResultResponse> {
     const normalizedLogs =
       logFiles?.map((log) => {
@@ -432,8 +439,13 @@ export class RaySurfer {
       prompts,
       files_written: filesWritten,
       log_files: normalizedLogs.length > 0 ? normalizedLogs : undefined,
-      auto_vote: autoVote,
+      use_raysurfer_ai_voting: useRaysurferAiVoting,
     };
+
+    // User-provided votes (skips AI grading automatically)
+    if (userVotes) {
+      data.user_votes = userVotes;
+    }
 
     const result = await this.request<{
       success: boolean;

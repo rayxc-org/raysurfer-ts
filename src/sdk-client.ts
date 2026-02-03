@@ -558,7 +558,8 @@ class RaysurferQuery {
               i === 0 && cachedBlocksForVoting.length > 0
                 ? cachedBlocksForVoting
                 : undefined,
-              true,
+              true,      // useRaysurferAiVoting
+              undefined, // userVote
               joinedLogs,
             );
           }
