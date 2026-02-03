@@ -90,6 +90,10 @@ const createDebugLogger = (enabled: boolean) => ({
 
 /** Raysurfer-specific options beyond Claude SDK Options */
 export interface RaysurferExtras {
+  /** Organization ID for dedicated namespace (team/enterprise) */
+  organizationId?: string;
+  /** Workspace ID for client-specific namespace (enterprise only) */
+  workspaceId?: string;
   /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
   snipsDesired?: SnipsDesired;
   /** Custom namespace for code storage/retrieval */
@@ -132,11 +136,25 @@ function splitOptions(options: RaysurferQueryOptions): {
   sdkOptions: Options;
   extras: RaysurferExtras;
 } {
-  const { snipsDesired, namespace, debug, workingDirectory, ...sdkOptions } =
-    options;
+  const {
+    organizationId,
+    workspaceId,
+    snipsDesired,
+    namespace,
+    debug,
+    workingDirectory,
+    ...sdkOptions
+  } = options;
   return {
     sdkOptions,
-    extras: { snipsDesired, namespace, debug, workingDirectory },
+    extras: {
+      organizationId,
+      workspaceId,
+      snipsDesired,
+      namespace,
+      debug,
+      workingDirectory,
+    },
   };
 }
 
@@ -217,6 +235,8 @@ class RaysurferQuery {
       this._raysurfer = new RaySurfer({
         apiKey: this._apiKey,
         baseUrl: this._baseUrl,
+        organizationId: this._extras.organizationId,
+        workspaceId: this._extras.workspaceId,
         snipsDesired: this._extras.snipsDesired,
         namespace: this._extras.namespace,
       });
@@ -558,7 +578,7 @@ class RaysurferQuery {
               i === 0 && cachedBlocksForVoting.length > 0
                 ? cachedBlocksForVoting
                 : undefined,
-              true,      // useRaysurferAiVoting
+              true, // useRaysurferAiVoting
               undefined, // userVote
               joinedLogs,
             );
