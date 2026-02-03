@@ -1,7 +1,7 @@
 {
   "name": "raysurfer",
   "version": "0.5.5",
-  "description": "Drop-in replacement for Claude Agent SDK with automatic code caching - just swap your import",
+  "description": "Semantic code caching for LLM agents",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
