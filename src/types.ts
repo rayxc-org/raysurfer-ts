@@ -224,7 +224,7 @@ export interface CodeFile {
   verdictScore: number;
   thumbsUp: number;
   thumbsDown: number;
-  /** Pinecone semantic similarity (0-1) */
+  /** Semantic similarity (0-1) */
   similarityScore: number;
   /** Combined score: similarity * 0.6 + verdict * 0.4 */
   combinedScore: number;
