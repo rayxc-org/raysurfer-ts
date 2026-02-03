@@ -117,6 +117,8 @@ export interface SearchParams {
   minVerdictScore?: number;
   preferComplete?: boolean;
   inputSchema?: Record<string, unknown>;
+  /** Override client-level workspaceId for this request */
+  workspaceId?: string;
 }
 
 /**
@@ -145,6 +147,7 @@ export class RaySurfer {
     method: string,
     path: string,
     body?: unknown,
+    headersOverride?: Record<string, string>,
   ): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -171,6 +174,11 @@ export class RaySurfer {
     }
     // SDK version for tracking
     headers["X-Raysurfer-SDK-Version"] = `typescript/${VERSION}`;
+
+    // Apply per-request header overrides (e.g., workspace_id)
+    if (headersOverride) {
+      Object.assign(headers, headersOverride);
+    }
 
     let lastError: Error | undefined;
 
@@ -243,6 +251,14 @@ export class RaySurfer {
 
     // Should not reach here, but satisfy TypeScript
     throw lastError ?? new APIError("Request failed after retries");
+  }
+
+  /** Build header overrides for per-request workspaceId */
+  private workspaceHeaders(
+    workspaceId?: string,
+  ): Record<string, string> | undefined {
+    if (!workspaceId) return undefined;
+    return { "X-Raysurfer-Workspace-Id": workspaceId };
   }
 
   // =========================================================================
@@ -335,6 +351,8 @@ export class RaySurfer {
    * deduplication, quality checks, storage, AND voting for cached code blocks.
    *
    * For uploading multiple files at once, use uploadBulkCodeSnips().
+   *
+   * @param workspaceId - Override client-level workspaceId for this request
    */
   async uploadNewCodeSnip(
     task: string,
@@ -349,6 +367,7 @@ export class RaySurfer {
     userVote?: number,
     executionLogs?: string,
     runUrl?: string,
+    workspaceId?: string,
   ): Promise<SubmitExecutionResultResponse> {
     const data: Record<string, unknown> = {
       task,
@@ -385,7 +404,12 @@ export class RaySurfer {
       success: boolean;
       code_blocks_stored: number;
       message: string;
-    }>("POST", "/api/store/execution-result", data);
+    }>(
+      "POST",
+      "/api/store/execution-result",
+      data,
+      this.workspaceHeaders(workspaceId),
+    );
 
     return {
       success: result.success,
@@ -401,6 +425,8 @@ export class RaySurfer {
    * Bulk upload code files, prompts, and logs for sandboxed grading.
    *
    * The backend runs a grader that votes thumbs up/down for each code file.
+   *
+   * @param workspaceId - Override client-level workspaceId for this request
    */
   async uploadBulkCodeSnips(
     prompts: string[],
@@ -416,6 +442,7 @@ export class RaySurfer {
     >,
     useRaysurferAiVoting: boolean = true,
     userVotes?: Record<string, number>,
+    workspaceId?: string,
   ): Promise<BulkExecutionResultResponse> {
     const normalizedLogs =
       logFiles?.map((log) => {
@@ -453,7 +480,12 @@ export class RaySurfer {
       votes_queued: number;
       message: string;
       status_url?: string | null;
-    }>("POST", "/api/store/bulk-execution-result", data);
+    }>(
+      "POST",
+      "/api/store/bulk-execution-result",
+      data,
+      this.workspaceHeaders(workspaceId),
+    );
 
     return {
       success: result.success,
@@ -495,7 +527,12 @@ export class RaySurfer {
       total_found: number;
       cache_hit: boolean;
       search_namespaces: string[];
-    }>("POST", "/api/retrieve/search", data);
+    }>(
+      "POST",
+      "/api/retrieve/search",
+      data,
+      this.workspaceHeaders(params.workspaceId),
+    );
 
     return {
       matches: result.matches.map((m) => ({
