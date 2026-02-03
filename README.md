@@ -160,10 +160,10 @@ for (const match of searchResult.matches) {
   console.log(`${match.codeBlock.name}: ${match.combinedScore}`);
 }
 
-// 2. Upload new code snippets after execution
-await client.uploadNewCodeSnips(
+// 2. Upload a new code file after execution
+await client.uploadNewCodeSnip(
   "Fetch GitHub trending repos",
-  [{ path: "fetch_repos.ts", content: "function fetch() { ... }" }],
+  { path: "fetch_repos.ts", content: "function fetch() { ... }" },
   true // succeeded
 );
 

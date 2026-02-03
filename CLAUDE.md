@@ -69,10 +69,10 @@ const client = new RaySurfer({ apiKey: "rs_..." });
 // Pull: retrieve cached code by user query
 const result = await client.getCodeFiles({ task: "Fetch GitHub user data" });
 
-// Upload: store code + logs + query (voting triggered by default)
-await client.uploadNewCodeSnips(
+// Upload: store a code file + logs + query (voting triggered by default)
+await client.uploadNewCodeSnip(
   "Fetch GitHub user data",
-  [{ path: "fetcher.ts", content: "function fetch() { ... }" }],
+  { path: "fetcher.ts", content: "function fetch() { ... }" },
   true,     // succeeded
   undefined, // cachedCodeBlocks
   true,     // autoVote

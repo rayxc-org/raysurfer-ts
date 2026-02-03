@@ -336,7 +336,7 @@ export class RaySurfer {
    *
    * For uploading multiple files at once, use uploadBulkCodeSnips().
    */
-  async uploadNewCodeSnips(
+  async uploadNewCodeSnip(
     task: string,
     fileWritten: FileWritten,
     succeeded: boolean,
@@ -387,6 +387,9 @@ export class RaySurfer {
       message: result.message,
     };
   }
+
+  /** Backwards-compatible alias. */
+  uploadNewCodeSnips = this.uploadNewCodeSnip.bind(this);
 
   /**
    * Bulk upload code files, prompts, and logs for sandboxed grading.
@@ -901,8 +904,8 @@ export class RaySurfer {
     fileWritten: FileWritten,
     succeeded: boolean,
   ): Promise<SubmitExecutionResultResponse> {
-    /** Alias for uploadNewCodeSnips for backwards compatibility. */
-    return this.uploadNewCodeSnips(task, fileWritten, succeeded);
+    /** Alias for uploadNewCodeSnip for backwards compatibility. */
+    return this.uploadNewCodeSnip(task, fileWritten, succeeded);
   }
 
   async retrieve(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {

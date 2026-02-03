@@ -551,7 +551,7 @@ class RaysurferQuery {
           // Pass cachedCodeBlocks only on the first call to trigger voting once
           for (let i = 0; i < filesToCache.length; i++) {
             const file = filesToCache[i]!;
-            await this._raysurfer.uploadNewCodeSnips(
+            await this._raysurfer.uploadNewCodeSnip(
               this._promptText,
               file,
               true,
