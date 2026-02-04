@@ -31,7 +31,8 @@ export interface CodeBlock {
   outputSchema: Record<string, unknown>;
   language: string;
   languageVersion?: string | null;
-  dependencies: string[];
+  /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
+  dependencies: Record<string, string>;
   tags: string[];
   capabilities: string[];
   exampleQueries?: string[] | null;
@@ -219,7 +220,8 @@ export interface CodeFile {
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown>;
   language: string;
-  dependencies: string[];
+  /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
+  dependencies: Record<string, string>;
   /** Rating score: thumbsUp / (thumbsUp + thumbsDown), 0.3 if unrated */
   verdictScore: number;
   thumbsUp: number;
@@ -251,7 +253,8 @@ export interface SearchMatch {
   filename: string;
   language: string;
   entrypoint: string;
-  dependencies: string[];
+  /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
+  dependencies: Record<string, string>;
 }
 
 /** Response from unified search endpoint */
@@ -318,4 +321,45 @@ export interface GetExecutionsParams {
 export interface RetrieveExecutionsResponse {
   executions: ExecutionRecord[];
   totalFound: number;
+}
+
+// ============================================================================
+// Options interfaces for kwargs-style API calls
+// ============================================================================
+
+/** Options for uploadNewCodeSnip (kwargs-style) */
+export interface UploadNewCodeSnipOptions {
+  task: string;
+  fileWritten: FileWritten;
+  succeeded: boolean;
+  cachedCodeBlocks?: Array<{
+    codeBlockId: string;
+    filename: string;
+    description: string;
+  }>;
+  useRaysurferAiVoting?: boolean;
+  userVote?: number;
+  executionLogs?: string;
+  runUrl?: string;
+  workspaceId?: string;
+  /** Package dependencies with versions (e.g., {"pandas": "2.1.0"}) */
+  dependencies?: Record<string, string>;
+}
+
+/** Options for uploadBulkCodeSnips (kwargs-style) */
+export interface UploadBulkCodeSnipsOptions {
+  prompts: string[];
+  filesWritten: FileWritten[];
+  logFiles?: Array<
+    | LogFile
+    | {
+        path: string;
+        content: string | Buffer;
+        encoding?: "utf-8" | "base64";
+        contentType?: string;
+      }
+  >;
+  useRaysurferAiVoting?: boolean;
+  userVotes?: Record<string, number>;
+  workspaceId?: string;
 }

@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.5.7";
+export const VERSION = "0.5.10";
 
 import type {
   AgentReview,
@@ -43,6 +43,25 @@ const DEFAULT_BASE_URL = "https://api.raysurfer.com";
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY = 500;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+/**
+ * Normalize dependencies from list format (legacy) to dict format (new).
+ * Handles both old ["pkg1", "pkg2"] and new {"pkg1": "1.0", "pkg2": "2.0"} formats.
+ */
+function normalizeDependencies(
+  rawDeps: string[] | Record<string, string> | undefined,
+): Record<string, string> {
+  if (!rawDeps) return {};
+  if (Array.isArray(rawDeps)) {
+    // Legacy format: ["pandas", "numpy"] -> {"pandas": "", "numpy": ""}
+    const result: Record<string, string> = {};
+    for (const pkg of rawDeps) {
+      result[pkg] = "";
+    }
+    return result;
+  }
+  return rawDeps;
+}
 
 export interface RaySurferOptions {
   /** RaySurfer API key */
@@ -351,13 +370,28 @@ export class RaySurfer {
    * deduplication, quality checks, storage, AND voting for cached code blocks.
    *
    * For uploading multiple files at once, use uploadBulkCodeSnips().
-   *
-   * @param workspaceId - Override client-level workspaceId for this request
    */
   async uploadNewCodeSnip(
-    task: string,
-    fileWritten: FileWritten,
-    succeeded: boolean,
+    taskOrOptions:
+      | string
+      | {
+          task: string;
+          fileWritten: FileWritten;
+          succeeded: boolean;
+          cachedCodeBlocks?: Array<{
+            codeBlockId: string;
+            filename: string;
+            description: string;
+          }>;
+          useRaysurferAiVoting?: boolean;
+          userVote?: number;
+          executionLogs?: string;
+          runUrl?: string;
+          workspaceId?: string;
+          dependencies?: Record<string, string>;
+        },
+    fileWritten?: FileWritten,
+    succeeded?: boolean,
     cachedCodeBlocks?: Array<{
       codeBlockId: string;
       filename: string;
@@ -368,27 +402,63 @@ export class RaySurfer {
     executionLogs?: string,
     runUrl?: string,
     workspaceId?: string,
+    dependencies?: Record<string, string>,
   ): Promise<SubmitExecutionResultResponse> {
+    // Support both positional args (legacy) and options object (new)
+    let opts: {
+      task: string;
+      fileWritten: FileWritten;
+      succeeded: boolean;
+      cachedCodeBlocks?: Array<{
+        codeBlockId: string;
+        filename: string;
+        description: string;
+      }>;
+      useRaysurferAiVoting?: boolean;
+      userVote?: number;
+      executionLogs?: string;
+      runUrl?: string;
+      workspaceId?: string;
+      dependencies?: Record<string, string>;
+    };
+
+    if (typeof taskOrOptions === "object") {
+      opts = taskOrOptions;
+    } else {
+      opts = {
+        task: taskOrOptions,
+        fileWritten: fileWritten!,
+        succeeded: succeeded!,
+        cachedCodeBlocks,
+        useRaysurferAiVoting,
+        userVote,
+        executionLogs,
+        runUrl,
+        workspaceId,
+        dependencies,
+      };
+    }
+
     const data: Record<string, unknown> = {
-      task,
-      file_written: fileWritten,
-      succeeded,
-      use_raysurfer_ai_voting: useRaysurferAiVoting,
+      task: opts.task,
+      file_written: opts.fileWritten,
+      succeeded: opts.succeeded,
+      use_raysurfer_ai_voting: opts.useRaysurferAiVoting ?? true,
     };
 
     // User-provided vote (skips AI voting automatically)
-    if (userVote !== undefined) {
-      data.user_vote = userVote;
+    if (opts.userVote !== undefined) {
+      data.user_vote = opts.userVote;
     }
 
     // Include execution logs for vote context if provided
-    if (executionLogs) {
-      data.execution_logs = executionLogs;
+    if (opts.executionLogs) {
+      data.execution_logs = opts.executionLogs;
     }
 
     // Include cached code blocks for backend voting if provided
-    if (cachedCodeBlocks && cachedCodeBlocks.length > 0) {
-      data.cached_code_blocks = cachedCodeBlocks.map((cb) => ({
+    if (opts.cachedCodeBlocks && opts.cachedCodeBlocks.length > 0) {
+      data.cached_code_blocks = opts.cachedCodeBlocks.map((cb) => ({
         code_block_id: cb.codeBlockId,
         filename: cb.filename,
         description: cb.description,
@@ -396,8 +466,13 @@ export class RaySurfer {
     }
 
     // Include run URL for linking to finished run logs
-    if (runUrl) {
-      data.run_url = runUrl;
+    if (opts.runUrl) {
+      data.run_url = opts.runUrl;
+    }
+
+    // Include dependencies with versions if provided
+    if (opts.dependencies) {
+      data.dependencies = opts.dependencies;
     }
 
     const result = await this.request<{
@@ -408,7 +483,7 @@ export class RaySurfer {
       "POST",
       "/api/store/execution-result",
       data,
-      this.workspaceHeaders(workspaceId),
+      this.workspaceHeaders(opts.workspaceId),
     );
 
     return {
@@ -426,11 +501,30 @@ export class RaySurfer {
    *
    * The backend runs a grader that votes thumbs up/down for each code file.
    *
-   * @param workspaceId - Override client-level workspaceId for this request
+   * Supports both options object (new) and positional arguments (legacy):
+   * - Options: `uploadBulkCodeSnips({ prompts, filesWritten, logFiles, ... })`
+   * - Legacy: `uploadBulkCodeSnips(prompts, filesWritten, logFiles, ...)`
    */
   async uploadBulkCodeSnips(
-    prompts: string[],
-    filesWritten: FileWritten[],
+    promptsOrOptions:
+      | string[]
+      | {
+          prompts: string[];
+          filesWritten: FileWritten[];
+          logFiles?: Array<
+            | LogFile
+            | {
+                path: string;
+                content: string | Buffer;
+                encoding?: "utf-8" | "base64";
+                contentType?: string;
+              }
+          >;
+          useRaysurferAiVoting?: boolean;
+          userVotes?: Record<string, number>;
+          workspaceId?: string;
+        },
+    filesWritten?: FileWritten[],
     logFiles?: Array<
       | LogFile
       | {
@@ -444,8 +538,39 @@ export class RaySurfer {
     userVotes?: Record<string, number>,
     workspaceId?: string,
   ): Promise<BulkExecutionResultResponse> {
+    // Support both positional args (legacy) and options object (new)
+    let opts: {
+      prompts: string[];
+      filesWritten: FileWritten[];
+      logFiles?: Array<
+        | LogFile
+        | {
+            path: string;
+            content: string | Buffer;
+            encoding?: "utf-8" | "base64";
+            contentType?: string;
+          }
+      >;
+      useRaysurferAiVoting?: boolean;
+      userVotes?: Record<string, number>;
+      workspaceId?: string;
+    };
+
+    if (!Array.isArray(promptsOrOptions)) {
+      opts = promptsOrOptions;
+    } else {
+      opts = {
+        prompts: promptsOrOptions,
+        filesWritten: filesWritten!,
+        logFiles,
+        useRaysurferAiVoting,
+        userVotes,
+        workspaceId,
+      };
+    }
+
     const normalizedLogs =
-      logFiles?.map((log) => {
+      opts.logFiles?.map((log) => {
         const content =
           typeof log.content === "string"
             ? log.content
@@ -463,15 +588,15 @@ export class RaySurfer {
       }) ?? [];
 
     const data: Record<string, unknown> = {
-      prompts,
-      files_written: filesWritten,
+      prompts: opts.prompts,
+      files_written: opts.filesWritten,
       log_files: normalizedLogs.length > 0 ? normalizedLogs : undefined,
-      use_raysurfer_ai_voting: useRaysurferAiVoting,
+      use_raysurfer_ai_voting: opts.useRaysurferAiVoting ?? true,
     };
 
     // User-provided votes (skips AI grading automatically)
-    if (userVotes) {
-      data.user_votes = userVotes;
+    if (opts.userVotes) {
+      data.user_votes = opts.userVotes;
     }
 
     const result = await this.request<{
@@ -484,7 +609,7 @@ export class RaySurfer {
       "POST",
       "/api/store/bulk-execution-result",
       data,
-      this.workspaceHeaders(workspaceId),
+      this.workspaceHeaders(opts.workspaceId),
     );
 
     return {
@@ -522,7 +647,7 @@ export class RaySurfer {
         filename: string;
         language: string;
         entrypoint: string;
-        dependencies: string[];
+        dependencies: string[] | Record<string, string>;
       }>;
       total_found: number;
       cache_hit: boolean;
@@ -546,7 +671,7 @@ export class RaySurfer {
         filename: m.filename,
         language: m.language,
         entrypoint: m.entrypoint,
-        dependencies: m.dependencies ?? [],
+        dependencies: normalizeDependencies(m.dependencies),
       })),
       totalFound: result.total_found,
       cacheHit: result.cache_hit,
@@ -977,7 +1102,9 @@ export class RaySurfer {
       outputSchema: (data.output_schema ?? {}) as Record<string, unknown>,
       language: data.language as string,
       languageVersion: data.language_version as string | null,
-      dependencies: (data.dependencies ?? []) as string[],
+      dependencies: normalizeDependencies(
+        data.dependencies as string[] | Record<string, string> | undefined,
+      ),
       tags: (data.tags ?? []) as string[],
       capabilities: (data.capabilities ?? []) as string[],
       exampleQueries: data.example_queries as string[] | null,
