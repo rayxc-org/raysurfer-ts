@@ -1,6 +1,7 @@
 # RaySurfer TypeScript SDK
 
-Drop-in replacement for Claude Agent SDK with automatic code caching.
+LLM output caching for AI agents. Retrieve proven code instead of
+regenerating it.
 
 ## Installation
 
@@ -16,9 +17,221 @@ Set your API key:
 export RAYSURFER_API_KEY=your_api_key_here
 ```
 
-Get your key from the [dashboard](https://raysurfer.com/dashboard/api-keys).
+Get your key from the
+[dashboard](https://raysurfer.com/dashboard/api-keys).
 
-## Usage
+## Low-Level API
+
+For custom integrations, use the `RaySurfer` client directly with
+any LLM provider.
+
+### Complete Example
+
+```typescript
+import { RaySurfer } from "raysurfer";
+
+const client = new RaySurfer({ apiKey: "your_api_key" });
+const task = "Fetch GitHub trending repos";
+
+// 1. Retrieve cached code files for a task
+const result = await client.getCodeFiles({
+  task,
+  topK: 5,
+  minVerdictScore: 0.3,
+});
+
+// result.addToLlmPrompt contains a pre-formatted string like:
+//
+// You have access to pre-written code files:
+// - .raysurfer_code/github_fetcher.ts: Fetches trending repos
+// ...
+
+// Augment your system prompt with cached code context
+const basePrompt = "You are a helpful coding assistant.";
+const augmentedPrompt = basePrompt + result.addToLlmPrompt;
+
+// Use augmentedPrompt with any LLM provider (Anthropic, OpenAI, etc.)
+
+// 2. Upload a new code file after execution
+await client.uploadNewCodeSnip({
+  task,
+  fileWritten: {
+    path: "fetch_repos.ts",
+    content: "function fetch() { ... }",
+  },
+  succeeded: true,
+  executionLogs: "Fetched 10 trending repos successfully",
+  dependencies: { "node-fetch": "3.3.0", zod: "3.22.0" },
+});
+
+// 2b. Bulk upload prompts/logs/code for sandboxed grading
+await client.uploadBulkCodeSnips(
+  ["Build a CLI tool", "Add CSV support"],
+  [{ path: "cli.ts", content: "function main() { ... }" }],
+  [
+    {
+      path: "logs/run.log",
+      content: "Task completed",
+      encoding: "utf-8",
+    },
+  ]
+);
+
+// 3. Vote on whether a cached snippet was useful
+await client.voteCodeSnip({
+  task,
+  codeBlockId: result.files[0].codeBlockId,
+  codeBlockName: result.files[0].filename,
+  codeBlockDescription: result.files[0].description,
+  succeeded: true,
+});
+```
+
+### Client Options
+
+```typescript
+const client = new RaySurfer({
+  apiKey: "your_api_key",
+  baseUrl: "https://api.raysurfer.com", // optional
+  timeout: 30000, // optional, in ms
+  organizationId: "org_xxx", // optional, for team namespacing
+  workspaceId: "ws_xxx", // optional, for enterprise namespacing
+  snipsDesired: "company", // optional, snippet scope
+  publicSnips: true, // optional, include community snippets
+});
+```
+
+### Response Fields
+
+The `getCodeFiles()` response includes:
+
+| Field            | Type         | Description                       |
+| ---------------- | ------------ | --------------------------------- |
+| `files`          | `CodeFile[]` | Retrieved code files with metadata|
+| `task`           | `string`     | The task that was searched        |
+| `totalFound`     | `number`     | Total matches found               |
+| `addToLlmPrompt` | `string`    | Pre-formatted string to append to LLM system prompt |
+
+Each `CodeFile` contains `codeBlockId`, `filename`, `source`,
+`description`, `verdictScore`, `thumbsUp`, `thumbsDown`, and
+`similarityScore`.
+
+### Store a Code Block with Full Metadata
+
+```typescript
+const result = await client.storeCodeBlock({
+  name: "GitHub User Fetcher",
+  source: "function fetchUser(username) { ... }",
+  entrypoint: "fetchUser",
+  language: "typescript",
+  description: "Fetches user data from GitHub API",
+  tags: ["github", "api", "user"],
+  dependencies: { "node-fetch": "3.3.0" },
+});
+```
+
+### Retrieve Few-Shot Examples
+
+```typescript
+const examples = await client.getFewShotExamples(
+  "Parse CSV files",
+  3
+);
+
+for (const ex of examples) {
+  console.log(`Task: ${ex.task}`);
+  console.log(`Code: ${ex.codeSnippet}`);
+}
+```
+
+### Retrieve Task Patterns
+
+```typescript
+const patterns = await client.getTaskPatterns({
+  task: "API integration",
+  minThumbsUp: 5,
+  topK: 20,
+});
+
+for (const p of patterns) {
+  console.log(`${p.taskPattern} -> ${p.codeBlockName}`);
+}
+```
+
+### User-Provided Votes
+
+Instead of relying on AI voting, provide your own votes:
+
+```typescript
+// Single upload with your own vote (AI voting is skipped)
+await client.uploadNewCodeSnip({
+  task: "Fetch GitHub trending repos",
+  fileWritten: file,
+  succeeded: true,
+  userVote: 1, // 1 = thumbs up, -1 = thumbs down
+});
+
+// Bulk upload with per-file votes (AI grading is skipped)
+await client.uploadBulkCodeSnips(
+  ["Build a CLI tool", "Add CSV support"],
+  files,
+  logs,
+  true, // useRaysurferAiVoting (ignored when userVotes set)
+  { "app.ts": 1, "utils.ts": -1 } // userVotes
+);
+```
+
+### Method Reference
+
+| Method | Description |
+|--------|-------------|
+| `search({ task, topK?, minVerdictScore?, preferComplete?, inputSchema? })` | Unified search for cached code (recommended) |
+| `getCodeFiles({ task, topK?, minVerdictScore?, preferComplete?, cacheDir? })` | Retrieve cached code files with `addToLlmPrompt` for LLM augmentation |
+| `getCodeSnips({ task, topK?, minVerdictScore? })` | Retrieve cached code snippets by semantic search |
+| `retrieveBest({ task, topK?, minVerdictScore? })` | Retrieve the single best match |
+| `getFewShotExamples(task, k)` | Retrieve few-shot examples for code generation prompting |
+| `getTaskPatterns({ task, minThumbsUp?, topK? })` | Retrieve proven task-to-code mappings |
+| `storeCodeBlock({ name, source, entrypoint, language, description, tags?, dependencies?, ... })` | Store a code block with full metadata |
+| `uploadNewCodeSnip({ task, fileWritten, succeeded, useRaysurferAiVoting?, userVote?, executionLogs?, dependencies? })` | Store a single code file with optional dependency versions |
+| `uploadBulkCodeSnips(prompts, filesWritten, logFiles?, useRaysurferAiVoting?, userVotes?)` | Bulk upload for grading (AI votes by default, or provide per-file votes) |
+| `voteCodeSnip({ task, codeBlockId, codeBlockName, codeBlockDescription, succeeded })` | Vote on snippet usefulness |
+
+### Exceptions
+
+Both clients include built-in retry logic with exponential backoff
+for transient failures (429, 5xx, network errors).
+
+| Exception               | Description                                          |
+| ----------------------- | ---------------------------------------------------- |
+| `RaySurferError`        | Base exception for all Raysurfer errors              |
+| `APIError`              | API returned an error response (includes `statusCode`) |
+| `AuthenticationError`   | API key is invalid or missing                        |
+| `CacheUnavailableError` | Cache backend is unreachable                         |
+| `RateLimitError`        | Rate limit exceeded after retries (includes `retryAfter`) |
+| `ValidationError`       | Request validation failed (includes `field`)         |
+
+```typescript
+import { RaySurfer, RateLimitError } from "raysurfer";
+
+const client = new RaySurfer({ apiKey: "your_api_key" });
+
+try {
+  const result = await client.getCodeSnips({
+    task: "Fetch GitHub repos",
+  });
+} catch (e) {
+  if (e instanceof RateLimitError) {
+    console.log(`Rate limited after retries: ${e.message}`);
+    if (e.retryAfter) {
+      console.log(`Try again in ${e.retryAfter}ms`);
+    }
+  }
+}
+```
+
+---
+
+## Claude Agent SDK Drop-in
 
 Swap your import — everything else stays the same:
 
@@ -40,8 +253,8 @@ for await (const message of query({
 }
 ```
 
-All Claude SDK types are re-exported from `raysurfer`, so you don't need a
-separate import:
+All Claude SDK types are re-exported from `raysurfer`, so you don't
+need a separate import:
 
 ```typescript
 import {
@@ -52,16 +265,7 @@ import {
 } from "raysurfer";
 ```
 
-## How It Works
-
-1. **On query**: Retrieves cached code blocks matching your task
-2. **Injects into prompt**: Agent sees proven code snippets
-3. **After success**: New code is cached for next time
-
-Caching is enabled automatically when `RAYSURFER_API_KEY` is set. Without it,
-behaves exactly like the original SDK.
-
-## Class-based API
+### Class-based API
 
 ```typescript
 import { ClaudeSDKClient } from "raysurfer";
@@ -76,7 +280,7 @@ for await (const msg of client.query("Fetch data from GitHub API")) {
 }
 ```
 
-## System Prompt Preset
+### System Prompt Preset
 
 Use the Claude Code preset system prompt with appended instructions:
 
@@ -95,9 +299,10 @@ for await (const message of query({
 }
 ```
 
-## Query Control Methods
+### Query Control Methods
 
-The `query()` function returns a `Query` object with full control methods:
+The `query()` function returns a `Query` object with full control
+methods:
 
 ```typescript
 const q = query({ prompt: "Build a REST API" });
@@ -110,6 +315,11 @@ const models = await q.supportedModels();
 const info = await q.accountInfo();
 q.close();
 ```
+
+### Without Caching
+
+If `RAYSURFER_API_KEY` is not set, behaves exactly like the original
+SDK — no caching, just a pass-through wrapper.
 
 ## Snippet Retrieval Scope
 
@@ -135,54 +345,17 @@ const enterpriseClient = new ClaudeSDKClient({
 | `snipsDesired: "company"`    | TEAM or ENTERPRISE  |
 | `snipsDesired: "client"`     | ENTERPRISE only     |
 
-## Low-Level API
+## Public Snippets
 
-For custom integrations, use the `RaySurfer` client directly:
+Include community public snippets (crawled from GitHub) in
+retrieval results alongside your private snippets:
 
 ```typescript
-import { RaySurfer } from "raysurfer";
+// High-level
+const client = new ClaudeSDKClient({ publicSnips: true });
 
-const client = new RaySurfer({ apiKey: "your_api_key" });
-
-// 1. Get cached code snippets for a task
-const snips = await client.getCodeSnips({
-  task: "Fetch GitHub trending repos",
-});
-for (const match of snips.codeBlocks) {
-  console.log(`${match.codeBlock.name}: ${match.score}`);
-}
-
-// Or use the unified search endpoint
-const searchResult = await client.search({
-  task: "Fetch GitHub trending repos",
-});
-for (const match of searchResult.matches) {
-  console.log(`${match.codeBlock.name}: ${match.combinedScore}`);
-}
-
-// 2. Upload a new code file after execution
-await client.uploadNewCodeSnip(
-  "Fetch GitHub trending repos",
-  { path: "fetch_repos.ts", content: "function fetch() { ... }" },
-  true // succeeded
-);
-
-// 2b. Bulk upload prompts/logs/code for sandboxed grading
-await client.uploadBulkCodeSnips(
-  ["Build a CLI tool", "Add CSV support"],
-  [{ path: "cli.ts", content: "function main() { ... }" }],
-  [{ path: "logs/run.log", content: "Task completed", encoding: "utf-8" }],
-  true
-);
-
-// 3. Vote on whether a cached snippet was useful
-await client.voteCodeSnip({
-  task: "Fetch GitHub trending repos",
-  codeBlockId: "abc123",
-  codeBlockName: "github_fetcher",
-  codeBlockDescription: "Fetches trending repos from GitHub",
-  succeeded: true,
-});
+// Low-level
+const rs = new RaySurfer({ apiKey: "...", publicSnips: true });
 ```
 
 ## License
