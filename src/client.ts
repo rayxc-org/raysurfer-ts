@@ -18,6 +18,8 @@ import type {
   AutoReviewParams,
   AutoReviewResponse,
   BestMatch,
+  BrowsePublicParams,
+  BrowsePublicResponse,
   BulkExecutionResultResponse,
   CodeBlock,
   CodeFile,
@@ -27,9 +29,12 @@ import type {
   GetCodeFilesResponse,
   GetExecutionsParams,
   LogFile,
+  PublicSnippet,
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
+  SearchPublicParams,
+  SearchPublicResponse,
   SearchResponse,
   SnipsDesired,
   StoreCodeBlockResponse,
@@ -76,8 +81,8 @@ export interface RaySurferOptions {
   workspaceId?: string;
   /** Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only) */
   snipsDesired?: SnipsDesired;
-  /** Custom namespace for code storage/retrieval (overrides org-based namespacing) */
-  namespace?: string;
+  /** Include community public snippets (from github-snips) in retrieval results */
+  publicSnips?: boolean;
 }
 
 export interface StoreCodeBlockParams {
@@ -150,7 +155,7 @@ export class RaySurfer {
   private organizationId?: string;
   private workspaceId?: string;
   private snipsDesired?: SnipsDesired;
-  private namespace?: string;
+  private publicSnips?: boolean;
 
   constructor(options: RaySurferOptions = {}) {
     this.apiKey = options.apiKey;
@@ -159,7 +164,7 @@ export class RaySurfer {
     this.organizationId = options.organizationId;
     this.workspaceId = options.workspaceId;
     this.snipsDesired = options.snipsDesired;
-    this.namespace = options.namespace;
+    this.publicSnips = options.publicSnips;
   }
 
   private async request<T>(
@@ -187,9 +192,9 @@ export class RaySurfer {
     if (this.snipsDesired) {
       headers["X-Raysurfer-Snips-Desired"] = this.snipsDesired;
     }
-    // Custom namespace override
-    if (this.namespace) {
-      headers["X-Raysurfer-Namespace"] = this.namespace;
+    // Include community public snippets in retrieval
+    if (this.publicSnips) {
+      headers["X-Raysurfer-Public-Snips"] = "true";
     }
     // SDK version for tracking
     headers["X-Raysurfer-SDK-Version"] = `typescript/${VERSION}`;
@@ -297,7 +302,7 @@ export class RaySurfer {
       input_schema: params.inputSchema ?? {},
       output_schema: params.outputSchema ?? {},
       language_version: params.languageVersion ?? null,
-      dependencies: params.dependencies ?? [],
+      dependencies: params.dependencies ?? {},
       tags: params.tags ?? [],
       capabilities: params.capabilities ?? [],
       example_queries: params.exampleQueries ?? null,
@@ -389,6 +394,7 @@ export class RaySurfer {
           runUrl?: string;
           workspaceId?: string;
           dependencies?: Record<string, string>;
+          public?: boolean;
         },
     fileWritten?: FileWritten,
     succeeded?: boolean,
@@ -420,6 +426,7 @@ export class RaySurfer {
       runUrl?: string;
       workspaceId?: string;
       dependencies?: Record<string, string>;
+      public?: boolean;
     };
 
     if (typeof taskOrOptions === "object") {
@@ -473,6 +480,11 @@ export class RaySurfer {
     // Include dependencies with versions if provided
     if (opts.dependencies) {
       data.dependencies = opts.dependencies;
+    }
+
+    // Upload to public community namespace
+    if (opts.public) {
+      data.public = true;
     }
 
     const result = await this.request<{
@@ -638,10 +650,7 @@ export class RaySurfer {
     const result = await this.request<{
       matches: Array<{
         code_block: Record<string, unknown>;
-        combined_score: number;
-        vector_score: number;
-        verdict_score: number;
-        error_resilience: number;
+        score: number;
         thumbs_up: number;
         thumbs_down: number;
         filename: string;
@@ -651,7 +660,6 @@ export class RaySurfer {
       }>;
       total_found: number;
       cache_hit: boolean;
-      search_namespaces: string[];
     }>(
       "POST",
       "/api/retrieve/search",
@@ -662,10 +670,7 @@ export class RaySurfer {
     return {
       matches: result.matches.map((m) => ({
         codeBlock: this.parseCodeBlock(m.code_block),
-        combinedScore: m.combined_score,
-        vectorScore: m.vector_score,
-        verdictScore: m.verdict_score,
-        errorResilience: m.error_resilience,
+        score: m.score,
         thumbsUp: m.thumbs_up,
         thumbsDown: m.thumbs_down,
         filename: m.filename,
@@ -675,7 +680,6 @@ export class RaySurfer {
       })),
       totalFound: result.total_found,
       cacheHit: result.cache_hit,
-      searchNamespaces: result.search_namespaces ?? [],
     };
   }
 
@@ -692,8 +696,7 @@ export class RaySurfer {
     return {
       codeBlocks: response.matches.map((m) => ({
         codeBlock: m.codeBlock,
-        score: m.combinedScore,
-        verdictScore: m.verdictScore,
+        score: m.score,
         thumbsUp: m.thumbsUp,
         thumbsDown: m.thumbsDown,
         recentExecutions: [],
@@ -716,21 +719,18 @@ export class RaySurfer {
     if (first) {
       bestMatch = {
         codeBlock: first.codeBlock,
-        combinedScore: first.combinedScore,
-        vectorScore: first.vectorScore,
-        verdictScore: first.verdictScore,
-        errorResilience: first.errorResilience,
+        score: first.score,
         thumbsUp: first.thumbsUp,
         thumbsDown: first.thumbsDown,
       };
-      bestScore = first.combinedScore;
+      bestScore = first.score;
     }
     const alternativeCandidates: AlternativeCandidate[] = response.matches
       .slice(1, 4)
       .map((m) => ({
         codeBlockId: m.codeBlock.id,
         name: m.codeBlock.name,
-        combinedScore: m.combinedScore,
+        score: m.score,
         reason:
           m.thumbsUp > 0
             ? `${m.thumbsUp} thumbs up, ${m.thumbsDown} thumbs down`
@@ -780,8 +780,6 @@ export class RaySurfer {
         code_block_name: string;
         thumbs_up: number;
         thumbs_down: number;
-        verdict_score: number;
-        error_resilience: number;
         last_thumbs_up?: string | null;
         last_thumbs_down?: string | null;
       }>;
@@ -793,8 +791,6 @@ export class RaySurfer {
       codeBlockName: p.code_block_name,
       thumbsUp: p.thumbs_up,
       thumbsDown: p.thumbs_down,
-      verdictScore: p.verdict_score,
-      errorResilience: p.error_resilience,
       lastThumbsUp: p.last_thumbs_up,
       lastThumbsDown: p.last_thumbs_down,
     }));
@@ -823,11 +819,9 @@ export class RaySurfer {
       outputSchema: m.codeBlock.outputSchema,
       language: m.language,
       dependencies: m.dependencies,
-      verdictScore: m.verdictScore,
+      score: m.score,
       thumbsUp: m.thumbsUp,
       thumbsDown: m.thumbsDown,
-      similarityScore: m.vectorScore,
-      combinedScore: m.combinedScore,
     }));
     const addToLlmPrompt = this.formatLlmPrompt(
       files,
@@ -864,9 +858,10 @@ export class RaySurfer {
       lines.push(`- **Description**: ${f.description}`);
       lines.push(`- **Language**: ${f.language}`);
       lines.push(`- **Entrypoint**: \`${f.entrypoint}\``);
-      lines.push(`- **Confidence**: ${Math.round(f.verdictScore * 100)}%`);
-      if (f.dependencies.length > 0) {
-        lines.push(`- **Dependencies**: ${f.dependencies.join(", ")}`);
+      lines.push(`- **Confidence**: ${Math.round(f.score * 100)}%`);
+      const deps = Object.entries(f.dependencies);
+      if (deps.length > 0) {
+        lines.push(`- **Dependencies**: ${deps.map(([k, v]) => `${k}@${v}`).join(", ")}`);
       }
     }
 
@@ -1066,6 +1061,105 @@ export class RaySurfer {
       success: result.success,
       votePending: result.vote_pending,
       message: result.message,
+    };
+  }
+
+  // =========================================================================
+  // Public Snippet Browsing (no API key required)
+  // =========================================================================
+
+  /** Browse community public snippets without authentication. */
+  async browsePublic(
+    params: BrowsePublicParams = {},
+  ): Promise<BrowsePublicResponse> {
+    const data: Record<string, unknown> = {
+      limit: params.limit ?? 20,
+      offset: params.offset ?? 0,
+      sort_by: params.sortBy ?? "upvoted",
+    };
+    if (params.language) {
+      data.language = params.language;
+    }
+
+    const result = await this.request<{
+      snippets: Array<{
+        id: string;
+        name: string;
+        description: string;
+        source: string;
+        language: string;
+        entrypoint: string;
+        thumbs_up: number;
+        thumbs_down: number;
+        created_at: string | null;
+        namespace: string;
+      }>;
+      total: number;
+      has_more: boolean;
+    }>("POST", "/api/snippets/public/list", data);
+
+    return {
+      snippets: result.snippets.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        source: s.source,
+        language: s.language,
+        entrypoint: s.entrypoint,
+        thumbsUp: s.thumbs_up,
+        thumbsDown: s.thumbs_down,
+        createdAt: s.created_at,
+        namespace: s.namespace,
+      })),
+      total: result.total,
+      hasMore: result.has_more,
+    };
+  }
+
+  /** Search community public snippets by keyword without authentication. */
+  async searchPublic(
+    params: SearchPublicParams,
+  ): Promise<SearchPublicResponse> {
+    const data: Record<string, unknown> = {
+      query: params.query,
+      limit: params.limit ?? 20,
+    };
+    if (params.language) {
+      data.language = params.language;
+    }
+
+    const result = await this.request<{
+      snippets: Array<{
+        id: string;
+        name: string;
+        description: string;
+        source: string;
+        language: string;
+        entrypoint: string;
+        thumbs_up: number;
+        thumbs_down: number;
+        created_at: string | null;
+        namespace: string;
+      }>;
+      total: number;
+      query: string;
+    }>("POST", "/api/snippets/public/search", data);
+
+    return {
+      snippets: result.snippets.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        source: s.source,
+        language: s.language,
+        entrypoint: s.entrypoint,
+        thumbsUp: s.thumbs_up,
+        thumbsDown: s.thumbs_down,
+        createdAt: s.created_at,
+        namespace: s.namespace,
+      })),
+      total: result.total,
+      query: result.query,
     };
   }
 

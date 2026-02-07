@@ -82,13 +82,10 @@ export interface ExecutionRecord {
   review?: AgentReview | null;
 }
 
-/** The best matching code block with full scoring */
+/** The best matching code block with scoring */
 export interface BestMatch {
   codeBlock: CodeBlock;
-  combinedScore: number;
-  vectorScore: number;
-  verdictScore: number;
-  errorResilience: number;
+  score: number;
   thumbsUp: number;
   thumbsDown: number;
 }
@@ -97,7 +94,7 @@ export interface BestMatch {
 export interface AlternativeCandidate {
   codeBlockId: string;
   name: string;
-  combinedScore: number;
+  score: number;
   reason: string;
 }
 
@@ -116,8 +113,6 @@ export interface TaskPattern {
   codeBlockName: string;
   thumbsUp: number;
   thumbsDown: number;
-  verdictScore: number;
-  errorResilience: number;
   lastThumbsUp?: string | null;
   lastThumbsDown?: string | null;
 }
@@ -155,7 +150,6 @@ export interface StoreExecutionResponse {
 export interface CodeBlockMatch {
   codeBlock: CodeBlock;
   score: number;
-  verdictScore: number;
   thumbsUp: number;
   thumbsDown: number;
   recentExecutions: ExecutionRecord[];
@@ -222,14 +216,9 @@ export interface CodeFile {
   language: string;
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
   dependencies: Record<string, string>;
-  /** Rating score: thumbsUp / (thumbsUp + thumbsDown), 0.3 if unrated */
-  verdictScore: number;
+  score: number;
   thumbsUp: number;
   thumbsDown: number;
-  /** Semantic similarity (0-1) */
-  similarityScore: number;
-  /** Combined score: similarity * 0.6 + verdict * 0.4 */
-  combinedScore: number;
 }
 
 /** Response with code files for a task */
@@ -241,13 +230,10 @@ export interface GetCodeFilesResponse {
   addToLlmPrompt: string;
 }
 
-/** A search match with full scoring from unified search */
+/** A search match with scoring */
 export interface SearchMatch {
   codeBlock: CodeBlock;
-  combinedScore: number;
-  vectorScore: number;
-  verdictScore: number;
-  errorResilience: number;
+  score: number;
   thumbsUp: number;
   thumbsDown: number;
   filename: string;
@@ -262,7 +248,6 @@ export interface SearchResponse {
   matches: SearchMatch[];
   totalFound: number;
   cacheHit: boolean;
-  searchNamespaces: string[];
 }
 
 /** Request to vote on a code snippet */
@@ -344,6 +329,55 @@ export interface UploadNewCodeSnipOptions {
   workspaceId?: string;
   /** Package dependencies with versions (e.g., {"pandas": "2.1.0"}) */
   dependencies?: Record<string, string>;
+  /** Upload to the public community namespace (default false) */
+  public?: boolean;
+}
+
+// ============================================================================
+// Public Snippet Browsing API
+// ============================================================================
+
+/** A public community snippet from the curated namespace */
+export interface PublicSnippet {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  language: string;
+  entrypoint: string;
+  thumbsUp: number;
+  thumbsDown: number;
+  createdAt: string | null;
+  namespace: string;
+}
+
+/** Response from browsing public snippets */
+export interface BrowsePublicResponse {
+  snippets: PublicSnippet[];
+  total: number;
+  hasMore: boolean;
+}
+
+/** Response from searching public snippets */
+export interface SearchPublicResponse {
+  snippets: PublicSnippet[];
+  total: number;
+  query: string;
+}
+
+/** Params for browsing public snippets */
+export interface BrowsePublicParams {
+  limit?: number;
+  offset?: number;
+  sortBy?: "upvoted" | "recent";
+  language?: string;
+}
+
+/** Params for searching public snippets */
+export interface SearchPublicParams {
+  query: string;
+  limit?: number;
+  language?: string;
 }
 
 /** Options for uploadBulkCodeSnips (kwargs-style) */

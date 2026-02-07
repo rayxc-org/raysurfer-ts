@@ -29,7 +29,7 @@ import type {
   SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 import { RaySurfer } from "./client";
-import type { CodeFile, FileWritten, SnipsDesired } from "./types";
+import type { CodeFile, FileWritten } from "./types";
 
 const DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com";
 const CACHE_DIR = ".raysurfer_code";
@@ -92,8 +92,8 @@ const createDebugLogger = (enabled: boolean) => ({
 export interface RaysurferExtras {
   /** Workspace ID for per-customer isolation (enterprise only) */
   workspaceId?: string;
-  /** Custom namespace for code storage/retrieval */
-  namespace?: string;
+  /** Include community public snippets (from github-snips) in retrieval results */
+  publicSnips?: boolean;
   /** Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var */
   debug?: boolean;
   /** @deprecated Use `cwd` instead */
@@ -132,13 +132,18 @@ function splitOptions(options: RaysurferQueryOptions): {
   sdkOptions: Options;
   extras: RaysurferExtras;
 } {
-  const { workspaceId, namespace, debug, workingDirectory, ...sdkOptions } =
-    options;
+  const {
+    workspaceId,
+    publicSnips,
+    debug,
+    workingDirectory,
+    ...sdkOptions
+  } = options;
   return {
     sdkOptions,
     extras: {
       workspaceId,
-      namespace,
+      publicSnips,
       debug,
       workingDirectory,
     },
@@ -225,7 +230,7 @@ class RaysurferQuery {
         baseUrl: this._baseUrl,
         workspaceId: this._extras.workspaceId,
         snipsDesired: this._extras.workspaceId ? "client" : undefined,
-        namespace: this._extras.namespace,
+        publicSnips: this._extras.publicSnips,
       });
 
       try {
@@ -253,9 +258,7 @@ class RaysurferQuery {
           this._debug.table(
             this._cachedFiles.map((f) => ({
               filename: f.filename,
-              similarity: `${Math.round(f.similarityScore * 100)}%`,
-              verdict: `${Math.round(f.verdictScore * 100)}%`,
-              combined: `${Math.round(f.combinedScore * 100)}%`,
+              score: `${Math.round(f.score * 100)}%`,
               thumbs: `${f.thumbsUp}/${f.thumbsDown}`,
               sourceLength: `${f.source.length} chars`,
             })),
