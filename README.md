@@ -1,5 +1,7 @@
 # RaySurfer TypeScript SDK
 
+[Website](https://raysurfer.com) · [Docs](https://docs.raysurfer.com) · [Dashboard](https://raysurfer.com/dashboard/api-keys)
+
 LLM output caching for AI agents. Retrieve proven code instead of
 regenerating it.
 
@@ -33,24 +35,17 @@ import { RaySurfer } from "raysurfer";
 const client = new RaySurfer({ apiKey: "your_api_key" });
 const task = "Fetch GitHub trending repos";
 
-// 1. Retrieve cached code files for a task
-const result = await client.getCodeFiles({
+// 1. Search for cached code matching a task
+const result = await client.search({
   task,
   topK: 5,
   minVerdictScore: 0.3,
 });
 
-// result.addToLlmPrompt contains a pre-formatted string like:
-//
-// You have access to pre-written code files:
-// - .raysurfer_code/github_fetcher.ts: Fetches trending repos
-// ...
-
-// Augment your system prompt with cached code context
-const basePrompt = "You are a helpful coding assistant.";
-const augmentedPrompt = basePrompt + result.addToLlmPrompt;
-
-// Use augmentedPrompt with any LLM provider (Anthropic, OpenAI, etc.)
+for (const match of result.matches) {
+  console.log(`${match.codeBlock.name}: ${match.combinedScore}`);
+  console.log(`  Source: ${match.codeBlock.source.slice(0, 80)}...`);
+}
 
 // 2. Upload a new code file after execution
 await client.uploadNewCodeSnip({
@@ -80,9 +75,9 @@ await client.uploadBulkCodeSnips(
 // 3. Vote on whether a cached snippet was useful
 await client.voteCodeSnip({
   task,
-  codeBlockId: result.files[0].codeBlockId,
-  codeBlockName: result.files[0].filename,
-  codeBlockDescription: result.files[0].description,
+  codeBlockId: result.matches[0].codeBlock.id,
+  codeBlockName: result.matches[0].codeBlock.name,
+  codeBlockDescription: result.matches[0].codeBlock.description,
   succeeded: true,
 });
 ```
@@ -103,18 +98,18 @@ const client = new RaySurfer({
 
 ### Response Fields
 
-The `getCodeFiles()` response includes:
+The `search()` response includes:
 
-| Field            | Type         | Description                       |
-| ---------------- | ------------ | --------------------------------- |
-| `files`          | `CodeFile[]` | Retrieved code files with metadata|
-| `task`           | `string`     | The task that was searched        |
-| `totalFound`     | `number`     | Total matches found               |
-| `addToLlmPrompt` | `string`    | Pre-formatted string to append to LLM system prompt |
+| Field            | Type            | Description                       |
+| ---------------- | --------------- | --------------------------------- |
+| `matches`        | `SearchMatch[]` | Matching code blocks with scoring |
+| `totalFound`     | `number`        | Total matches found               |
+| `cacheHit`       | `boolean`       | Whether results were from cache   |
 
-Each `CodeFile` contains `codeBlockId`, `filename`, `source`,
-`description`, `verdictScore`, `thumbsUp`, `thumbsDown`, and
-`similarityScore`.
+Each `SearchMatch` contains `codeBlock` (with `id`, `name`,
+`source`, `description`, `entrypoint`, `language`, `dependencies`),
+`combinedScore`, `vectorScore`, `verdictScore`, `thumbsUp`,
+`thumbsDown`, `filename`, and `entrypoint`.
 
 ### Store a Code Block with Full Metadata
 
@@ -185,8 +180,7 @@ await client.uploadBulkCodeSnips(
 
 | Method | Description |
 |--------|-------------|
-| `search({ task, topK?, minVerdictScore?, preferComplete?, inputSchema? })` | Unified search for cached code (recommended) |
-| `getCodeFiles({ task, topK?, minVerdictScore?, preferComplete?, cacheDir? })` | Retrieve cached code files with `addToLlmPrompt` for LLM augmentation |
+| `search({ task, topK?, minVerdictScore?, preferComplete?, inputSchema? })` | Search for cached code snippets |
 | `getCodeSnips({ task, topK?, minVerdictScore? })` | Retrieve cached code snippets by semantic search |
 | `retrieveBest({ task, topK?, minVerdictScore? })` | Retrieve the single best match |
 | `getFewShotExamples(task, k)` | Retrieve few-shot examples for code generation prompting |

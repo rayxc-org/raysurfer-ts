@@ -66,8 +66,8 @@ import { RaySurfer } from "raysurfer";
 
 const client = new RaySurfer({ apiKey: "rs_..." });
 
-// Pull: retrieve cached code by user query
-const result = await client.getCodeFiles({ task: "Fetch GitHub user data" });
+// Search: retrieve cached code by user query
+const result = await client.search({ task: "Fetch GitHub user data" });
 
 // Upload: store a code file + logs + query (voting triggered by default)
 await client.uploadNewCodeSnip(
