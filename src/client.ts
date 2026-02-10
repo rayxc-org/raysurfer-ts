@@ -395,6 +395,8 @@ export class RaySurfer {
           workspaceId?: string;
           dependencies?: Record<string, string>;
           public?: boolean;
+          voteSource?: "ai" | "human";
+          voteCount?: number;
         },
     fileWritten?: FileWritten,
     succeeded?: boolean,
@@ -409,6 +411,8 @@ export class RaySurfer {
     runUrl?: string,
     workspaceId?: string,
     dependencies?: Record<string, string>,
+    voteSource?: "ai" | "human",
+    voteCount?: number,
   ): Promise<SubmitExecutionResultResponse> {
     // Support both positional args (legacy) and options object (new)
     let opts: {
@@ -427,6 +431,8 @@ export class RaySurfer {
       workspaceId?: string;
       dependencies?: Record<string, string>;
       public?: boolean;
+      voteSource?: "ai" | "human";
+      voteCount?: number;
     };
 
     if (typeof taskOrOptions === "object") {
@@ -443,6 +449,8 @@ export class RaySurfer {
         runUrl,
         workspaceId,
         dependencies,
+        voteSource,
+        voteCount,
       };
     }
 
@@ -485,6 +493,16 @@ export class RaySurfer {
     // Upload to public community namespace
     if (opts.public) {
       data.public = true;
+    }
+
+    // Vote source attribution (ai or human)
+    if (opts.voteSource !== undefined) {
+      data.vote_source = opts.voteSource;
+    }
+
+    // Explicit vote count override
+    if (opts.voteCount !== undefined) {
+      data.vote_count = opts.voteCount;
     }
 
     const result = await this.request<{
@@ -535,6 +553,8 @@ export class RaySurfer {
           useRaysurferAiVoting?: boolean;
           userVotes?: Record<string, number>;
           workspaceId?: string;
+          voteSource?: "ai" | "human";
+          voteCount?: number;
         },
     filesWritten?: FileWritten[],
     logFiles?: Array<
@@ -549,6 +569,8 @@ export class RaySurfer {
     useRaysurferAiVoting: boolean = true,
     userVotes?: Record<string, number>,
     workspaceId?: string,
+    voteSource?: "ai" | "human",
+    voteCount?: number,
   ): Promise<BulkExecutionResultResponse> {
     // Support both positional args (legacy) and options object (new)
     let opts: {
@@ -566,6 +588,8 @@ export class RaySurfer {
       useRaysurferAiVoting?: boolean;
       userVotes?: Record<string, number>;
       workspaceId?: string;
+      voteSource?: "ai" | "human";
+      voteCount?: number;
     };
 
     if (!Array.isArray(promptsOrOptions)) {
@@ -578,6 +602,8 @@ export class RaySurfer {
         useRaysurferAiVoting,
         userVotes,
         workspaceId,
+        voteSource,
+        voteCount,
       };
     }
 
@@ -609,6 +635,16 @@ export class RaySurfer {
     // User-provided votes (skips AI grading automatically)
     if (opts.userVotes) {
       data.user_votes = opts.userVotes;
+    }
+
+    // Vote source attribution (ai or human)
+    if (opts.voteSource !== undefined) {
+      data.vote_source = opts.voteSource;
+    }
+
+    // Explicit vote count override
+    if (opts.voteCount !== undefined) {
+      data.vote_count = opts.voteCount;
     }
 
     const result = await this.request<{
