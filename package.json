@@ -1,6 +1,6 @@
 {
   "name": "raysurfer",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Semantic code caching for LLM agents",
   "type": "module",
   "main": "./dist/index.js",

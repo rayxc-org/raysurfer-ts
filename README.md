@@ -239,7 +239,7 @@ import { query } from "raysurfer";
 for await (const message of query({
   prompt: "Fetch data from GitHub API",
   options: {
-    model: "claude-opus-4-5-20250514",
+    model: "claude-opus-4-6-20260210",
     systemPrompt: "You are a helpful assistant.",
   },
 })) {
@@ -265,7 +265,7 @@ import {
 import { ClaudeSDKClient } from "raysurfer";
 
 const client = new ClaudeSDKClient({
-  model: "claude-opus-4-5-20250514",
+  model: "claude-opus-4-6-20260210",
   systemPrompt: "You are a helpful assistant.",
 });
 

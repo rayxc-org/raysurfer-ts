@@ -915,7 +915,7 @@ export class RaySurfer {
   // =========================================================================
 
   /**
-   * Get an auto-generated review using Claude Opus 4.5.
+   * Get an auto-generated review using Claude Opus 4.6.
    * Useful for programmatically reviewing execution results.
    */
   async autoReview(params: AutoReviewParams): Promise<AutoReviewResponse> {
