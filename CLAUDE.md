@@ -32,7 +32,7 @@ process.env.RAYSURFER_API_KEY = "rs_...";
 for await (const message of query({
   prompt: "Fetch data from GitHub API",
   options: {
-    model: "claude-opus-4-6-20260210",
+    model: "claude-opus-4-6",
     systemPrompt: "You are a helpful assistant.",
   },
 })) {
@@ -48,7 +48,7 @@ For users who prefer a class-based interface:
 import { ClaudeSDKClient } from "raysurfer";
 
 const client = new ClaudeSDKClient({
-  model: "claude-opus-4-6-20260210",
+  model: "claude-opus-4-6",
   systemPrompt: "You are a helpful assistant.",
 });
 
