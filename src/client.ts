@@ -119,6 +119,28 @@ export interface RetrieveParams {
   minVerdictScore?: number;
 }
 
+interface UploadNewCodeSnipCompatOptions {
+  task: string;
+  fileWritten?: FileWritten;
+  filesWritten?: FileWritten[];
+  succeeded: boolean;
+  cachedCodeBlocks?: Array<{
+    codeBlockId: string;
+    filename: string;
+    description: string;
+  }>;
+  useRaysurferAiVoting?: boolean;
+  autoVote?: boolean;
+  userVote?: number;
+  executionLogs?: string;
+  runUrl?: string;
+  workspaceId?: string;
+  dependencies?: Record<string, string>;
+  public?: boolean;
+  voteSource?: "ai" | "human";
+  voteCount?: number;
+}
+
 export interface GetCodeFilesParams {
   task: string;
   topK?: number;
@@ -377,27 +399,7 @@ export class RaySurfer {
    * For uploading multiple files at once, use uploadBulkCodeSnips().
    */
   async uploadNewCodeSnip(
-    taskOrOptions:
-      | string
-      | {
-          task: string;
-          fileWritten: FileWritten;
-          succeeded: boolean;
-          cachedCodeBlocks?: Array<{
-            codeBlockId: string;
-            filename: string;
-            description: string;
-          }>;
-          useRaysurferAiVoting?: boolean;
-          userVote?: number;
-          executionLogs?: string;
-          runUrl?: string;
-          workspaceId?: string;
-          dependencies?: Record<string, string>;
-          public?: boolean;
-          voteSource?: "ai" | "human";
-          voteCount?: number;
-        },
+    taskOrOptions: string | UploadNewCodeSnipCompatOptions,
     fileWritten?: FileWritten,
     succeeded?: boolean,
     cachedCodeBlocks?: Array<{
@@ -415,25 +417,7 @@ export class RaySurfer {
     voteCount?: number,
   ): Promise<SubmitExecutionResultResponse> {
     // Support both positional args (legacy) and options object (new)
-    let opts: {
-      task: string;
-      fileWritten: FileWritten;
-      succeeded: boolean;
-      cachedCodeBlocks?: Array<{
-        codeBlockId: string;
-        filename: string;
-        description: string;
-      }>;
-      useRaysurferAiVoting?: boolean;
-      userVote?: number;
-      executionLogs?: string;
-      runUrl?: string;
-      workspaceId?: string;
-      dependencies?: Record<string, string>;
-      public?: boolean;
-      voteSource?: "ai" | "human";
-      voteCount?: number;
-    };
+    let opts: UploadNewCodeSnipCompatOptions;
 
     if (typeof taskOrOptions === "object") {
       opts = taskOrOptions;
@@ -454,11 +438,55 @@ export class RaySurfer {
       };
     }
 
+    if (opts.fileWritten && opts.filesWritten) {
+      throw new Error("Provide either fileWritten or filesWritten, not both.");
+    }
+
+    const effectiveVoting = opts.autoVote ?? opts.useRaysurferAiVoting ?? true;
+
+    const normalizedFiles: FileWritten[] = [];
+    if (opts.fileWritten) {
+      normalizedFiles.push(opts.fileWritten);
+    } else if (opts.filesWritten) {
+      normalizedFiles.push(...opts.filesWritten);
+    }
+
+    if (normalizedFiles.length === 0) {
+      throw new Error(
+        "Missing required file input: provide fileWritten or filesWritten.",
+      );
+    }
+
+    if (normalizedFiles.length > 1) {
+      const responses: SubmitExecutionResultResponse[] = [];
+      for (const compatFile of normalizedFiles) {
+        responses.push(
+          await this.uploadNewCodeSnip({
+            ...opts,
+            fileWritten: compatFile,
+            filesWritten: undefined,
+            useRaysurferAiVoting: effectiveVoting,
+            autoVote: undefined,
+          }),
+        );
+      }
+
+      return {
+        success: responses.every((response) => response.success),
+        codeBlocksStored: responses.reduce(
+          (sum, response) => sum + response.codeBlocksStored,
+          0,
+        ),
+        message: `Uploaded ${normalizedFiles.length} files via compatibility path.`,
+      };
+    }
+
+    const [resolvedFile] = normalizedFiles;
     const data: Record<string, unknown> = {
       task: opts.task,
-      file_written: opts.fileWritten,
+      file_written: resolvedFile,
       succeeded: opts.succeeded,
-      use_raysurfer_ai_voting: opts.useRaysurferAiVoting ?? true,
+      use_raysurfer_ai_voting: effectiveVoting,
     };
 
     // User-provided vote (skips AI voting automatically)
@@ -687,6 +715,8 @@ export class RaySurfer {
       matches: Array<{
         code_block: Record<string, unknown>;
         score: number;
+        vector_score?: number;
+        verdict_score?: number;
         thumbs_up: number;
         thumbs_down: number;
         filename: string;
@@ -704,16 +734,23 @@ export class RaySurfer {
     );
 
     return {
-      matches: result.matches.map((m) => ({
-        codeBlock: this.parseCodeBlock(m.code_block),
-        score: m.score,
-        thumbsUp: m.thumbs_up,
-        thumbsDown: m.thumbs_down,
-        filename: m.filename,
-        language: m.language,
-        entrypoint: m.entrypoint,
-        dependencies: normalizeDependencies(m.dependencies),
-      })),
+      matches: result.matches.map((m) => {
+        const vectorScore = m.vector_score ?? m.score;
+        const verdictScore = m.verdict_score ?? m.score;
+        return {
+          codeBlock: this.parseCodeBlock(m.code_block),
+          score: m.score,
+          combinedScore: m.score,
+          vectorScore,
+          verdictScore,
+          thumbsUp: m.thumbs_up,
+          thumbsDown: m.thumbs_down,
+          filename: m.filename,
+          language: m.language,
+          entrypoint: m.entrypoint,
+          dependencies: normalizeDependencies(m.dependencies),
+        };
+      }),
       totalFound: result.total_found,
       cacheHit: result.cache_hit,
     };
@@ -897,7 +934,9 @@ export class RaySurfer {
       lines.push(`- **Confidence**: ${Math.round(f.score * 100)}%`);
       const deps = Object.entries(f.dependencies);
       if (deps.length > 0) {
-        lines.push(`- **Dependencies**: ${deps.map(([k, v]) => `${k}@${v}`).join(", ")}`);
+        lines.push(
+          `- **Dependencies**: ${deps.map(([k, v]) => `${k}@${v}`).join(", ")}`,
+        );
       }
     }
 

@@ -234,6 +234,12 @@ export interface GetCodeFilesResponse {
 export interface SearchMatch {
   codeBlock: CodeBlock;
   score: number;
+  /** Compatibility alias used by older wrappers. */
+  combinedScore: number;
+  /** Compatibility alias used by older wrappers. */
+  vectorScore: number;
+  /** Compatibility alias used by older wrappers. */
+  verdictScore: number;
   thumbsUp: number;
   thumbsDown: number;
   filename: string;
@@ -315,7 +321,9 @@ export interface RetrieveExecutionsResponse {
 /** Options for uploadNewCodeSnip (kwargs-style) */
 export interface UploadNewCodeSnipOptions {
   task: string;
-  fileWritten: FileWritten;
+  fileWritten?: FileWritten;
+  /** Compatibility alias for legacy wrappers that pass multiple files. */
+  filesWritten?: FileWritten[];
   succeeded: boolean;
   cachedCodeBlocks?: Array<{
     codeBlockId: string;
@@ -323,6 +331,8 @@ export interface UploadNewCodeSnipOptions {
     description: string;
   }>;
   useRaysurferAiVoting?: boolean;
+  /** Compatibility alias for useRaysurferAiVoting. */
+  autoVote?: boolean;
   userVote?: number;
   executionLogs?: string;
   runUrl?: string;
