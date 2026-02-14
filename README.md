@@ -3,8 +3,10 @@
 [Website](https://raysurfer.com) · [Docs](https://docs.raysurfer.com) · [Dashboard](https://raysurfer.com/dashboard/api-keys)
 
 <!-- Old: LLM output caching for AI agents. Retrieve proven code instead of regenerating it. -->
-Code reputation layer for AI agents. Let agents re-use generated
-code vs running 30 serial tools or generating code per execution.
+<!-- Old: Code reputation layer for AI agents. Let agents re-use generated code vs running 30 serial tools or generating code per execution. -->
+AI Maintained Skills for Vertical Agents. Re-use verified code
+from prior runs rather than serial tool calls or generating code
+per execution.
 
 ## Installation
 
