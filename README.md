@@ -1,6 +1,6 @@
 # RaySurfer TypeScript SDK
 
-[Website](https://raysurfer.com) · [Docs](https://docs.raysurfer.com) · [Dashboard](https://raysurfer.com/dashboard/api-keys)
+[Website](https://www.raysurfer.com) · [Docs](https://docs.raysurfer.com) · [Dashboard](https://www.raysurfer.com/dashboard/api-keys)
 
 <!-- Old: LLM output caching for AI agents. Retrieve proven code instead of regenerating it. -->
 <!-- Old: Code reputation layer for AI agents. Let agents re-use generated code vs running 30 serial tools or generating code per execution. -->
@@ -23,7 +23,7 @@ export RAYSURFER_API_KEY=your_api_key_here
 ```
 
 Get your key from the
-[dashboard](https://raysurfer.com/dashboard/api-keys).
+[dashboard](https://www.raysurfer.com/dashboard/api-keys).
 
 ## Low-Level API
 
