@@ -132,13 +132,8 @@ function splitOptions(options: RaysurferQueryOptions): {
   sdkOptions: Options;
   extras: RaysurferExtras;
 } {
-  const {
-    workspaceId,
-    publicSnips,
-    debug,
-    workingDirectory,
-    ...sdkOptions
-  } = options;
+  const { workspaceId, publicSnips, debug, workingDirectory, ...sdkOptions } =
+    options;
   return {
     sdkOptions,
     extras: {

@@ -23,6 +23,8 @@ import type {
   BulkExecutionResultResponse,
   CodeBlock,
   CodeFile,
+  ExecuteOptions,
+  ExecuteResult,
   ExecutionState,
   FewShotExample,
   FileWritten,
@@ -41,6 +43,9 @@ import type {
   StoreExecutionResponse,
   SubmitExecutionResultResponse,
   TaskPattern,
+  ToolCallback,
+  ToolCallRecord,
+  ToolDefinition,
 } from "./types";
 
 const DEFAULT_BASE_URL = "https://api.raysurfer.com";
@@ -178,6 +183,10 @@ export class RaySurfer {
   private workspaceId?: string;
   private snipsDesired?: SnipsDesired;
   private publicSnips?: boolean;
+  private registeredTools: Map<
+    string,
+    { definition: ToolDefinition; callback: ToolCallback }
+  >;
 
   constructor(options: RaySurferOptions = {}) {
     this.apiKey = options.apiKey;
@@ -187,6 +196,7 @@ export class RaySurfer {
     this.workspaceId = options.workspaceId;
     this.snipsDesired = options.snipsDesired;
     this.publicSnips = options.publicSnips;
+    this.registeredTools = new Map();
   }
 
   private async request<T>(
@@ -1235,6 +1245,168 @@ export class RaySurfer {
       })),
       total: result.total,
       query: result.query,
+    };
+  }
+
+  // =========================================================================
+  // Execute API (programmatic tool calling)
+  // =========================================================================
+
+  /** Register a tool that can be called by the server during execute. */
+  tool(
+    name: string,
+    description: string,
+    parameters: Record<string, unknown>,
+    callback: ToolCallback,
+  ): void {
+    this.registeredTools.set(name, {
+      definition: { name, description, parameters },
+      callback,
+    });
+  }
+
+  /** Execute a task with server-side code generation and tool calling. */
+  async execute(
+    task: string,
+    options?: Partial<ExecuteOptions>,
+  ): Promise<ExecuteResult> {
+    const timeout = options?.timeout ?? 300000;
+    const forceRegenerate = options?.forceRegenerate ?? false;
+    const sessionId = crypto.randomUUID();
+
+    // Build WebSocket URL: replace http(s) with ws(s)
+    const wsUrl = `${this.baseUrl.replace(/^http/, "ws")}/api/execute/ws/${sessionId}`;
+
+    const toolCalls: ToolCallRecord[] = [];
+
+    // Connect WebSocket
+    const ws = new WebSocket(wsUrl);
+
+    const wsReady = new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve());
+      ws.addEventListener("error", (ev) =>
+        reject(new Error(`WebSocket connection failed: ${String(ev)}`)),
+      );
+    });
+
+    // Set up message handler for tool calls
+    ws.addEventListener("message", async (event) => {
+      const raw =
+        typeof event.data === "string" ? event.data : String(event.data);
+      let msg: {
+        type: string;
+        request_id?: string;
+        tool_name?: string;
+        arguments?: Record<string, unknown>;
+      };
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        return;
+      }
+
+      if (msg.type === "tool_call" && msg.request_id && msg.tool_name) {
+        const start = Date.now();
+        const registered = this.registeredTools.get(msg.tool_name);
+        const record: ToolCallRecord = {
+          toolName: msg.tool_name,
+          arguments: msg.arguments ?? {},
+          result: null,
+          error: null,
+          durationMs: 0,
+        };
+
+        try {
+          if (!registered) {
+            throw new Error(`Unknown tool: ${msg.tool_name}`);
+          }
+          const callbackResult = registered.callback(msg.arguments ?? {});
+          const result =
+            callbackResult instanceof Promise
+              ? await callbackResult
+              : callbackResult;
+          record.result = result;
+          record.durationMs = Date.now() - start;
+
+          ws.send(
+            JSON.stringify({
+              type: "tool_result",
+              request_id: msg.request_id,
+              result,
+            }),
+          );
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          record.error = errorMsg;
+          record.durationMs = Date.now() - start;
+
+          ws.send(
+            JSON.stringify({
+              type: "tool_result",
+              request_id: msg.request_id,
+              result: `Error: ${errorMsg}`,
+            }),
+          );
+        }
+
+        toolCalls.push(record);
+      }
+    });
+
+    await wsReady;
+
+    // Build tool schemas (definitions only, no callbacks)
+    const tools = Array.from(this.registeredTools.values()).map(
+      (t) => t.definition,
+    );
+
+    // POST to /api/execute/run
+    const response = await this.request<{
+      execution_id: string;
+      result: string | null;
+      exit_code: number;
+      duration_ms: number;
+      cache_hit: boolean;
+      code_block_id: string | null;
+      error: string | null;
+      tool_calls: Array<{
+        tool_name: string;
+        arguments: Record<string, unknown>;
+        result: string | null;
+        error: string | null;
+        duration_ms: number;
+      }>;
+    }>("POST", "/api/execute/run", {
+      task,
+      tools,
+      session_id: sessionId,
+      timeout_seconds: timeout / 1000,
+      force_regenerate: forceRegenerate,
+    });
+
+    // Close WebSocket
+    ws.close();
+
+    // Merge server-reported tool calls with local records
+    const serverToolCalls: ToolCallRecord[] = (response.tool_calls ?? []).map(
+      (tc) => ({
+        toolName: tc.tool_name,
+        arguments: tc.arguments,
+        result: tc.result,
+        error: tc.error,
+        durationMs: tc.duration_ms,
+      }),
+    );
+
+    return {
+      executionId: response.execution_id,
+      result: response.result,
+      exitCode: response.exit_code,
+      durationMs: response.duration_ms,
+      cacheHit: response.cache_hit,
+      codeBlockId: response.code_block_id,
+      error: response.error,
+      toolCalls: serverToolCalls.length > 0 ? serverToolCalls : toolCalls,
     };
   }
 

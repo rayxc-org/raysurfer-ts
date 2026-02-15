@@ -390,6 +390,51 @@ export interface SearchPublicParams {
   language?: string;
 }
 
+// ============================================================================
+// Execute API (programmatic tool calling)
+// ============================================================================
+
+/** Definition of a tool that can be called during execution */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+/** Callback function invoked when the server calls a tool */
+export type ToolCallback = (
+  args: Record<string, unknown>,
+) => Promise<string> | string;
+
+/** Options for the execute method */
+export interface ExecuteOptions {
+  /** Timeout in milliseconds (default 300000 = 5 minutes) */
+  timeout: number;
+  /** Force regeneration instead of using cached code (default false) */
+  forceRegenerate: boolean;
+}
+
+/** Record of a single tool call made during execution */
+export interface ToolCallRecord {
+  toolName: string;
+  arguments: Record<string, unknown>;
+  result: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+/** Result of an execute call */
+export interface ExecuteResult {
+  executionId: string;
+  result: string | null;
+  exitCode: number;
+  durationMs: number;
+  cacheHit: boolean;
+  codeBlockId: string | null;
+  error: string | null;
+  toolCalls: ToolCallRecord[];
+}
+
 /** Options for uploadBulkCodeSnips (kwargs-style) */
 export interface UploadBulkCodeSnipsOptions {
   prompts: string[];
