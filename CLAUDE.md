@@ -97,11 +97,18 @@ bun run build
 
 ## Publishing
 
-In order to publish updates for the npm package, run `bun publish`.
+Always build, verify dist/ is included, then publish:
 
 ```bash
+bun run build
+bun pack --dry-run  # MUST show dist/index.js — if missing, do NOT publish
 bun publish
 ```
+
+Never skip the `bun pack --dry-run` check — the package shipped
+broken (no dist/) from v0.6.2 to v0.7.2 because this wasn't
+verified. The `.npmignore` file prevents `.gitignore` from
+excluding dist/; never delete `.npmignore`.
 
 ## Documentation Style
 
