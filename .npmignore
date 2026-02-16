@@ -1,0 +1,29 @@
+# Source files (not needed in published package)
+src/
+*.ts
+!dist/**/*.d.ts
+
+# Dev config
+tsconfig.json
+.eslintrc*
+.prettierrc*
+.editorconfig
+CLAUDE.md
+
+# Tests
+__tests__/
+*.test.*
+*.spec.*
+coverage/
+
+# Dev tools
+.github/
+.vscode/
+.idea/
+
+# Misc
+.DS_Store
+.env*
+*.tgz
+*.tsbuildinfo
+.cache
