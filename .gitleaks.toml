@@ -2,7 +2,9 @@
 useDefault = true
 
 [allowlist]
-paths = ['''.gitleaks.toml''']
+paths = ['''.gitleaks.toml''', '''\.env\.example$''']
+
+# --- Key prefix patterns (catch values by their known format) ---
 
 [[rules]]
 id = "anthropic-api-key"
@@ -27,3 +29,99 @@ id = "voyage-api-key"
 description = "Voyage AI API Key"
 regex = '''pa-[a-zA-Z0-9]{16,}'''
 keywords = ["pa-"]
+
+[[rules]]
+id = "e2b-api-key"
+description = "E2B API Key"
+regex = '''e2b_[a-zA-Z0-9]{16,}'''
+keywords = ["e2b_"]
+
+[[rules]]
+id = "resend-api-key"
+description = "Resend API Key"
+regex = '''re_[a-zA-Z0-9]{16,}'''
+keywords = ["re_"]
+
+[[rules]]
+id = "clerk-secret-key"
+description = "Clerk Secret Key"
+regex = '''sk_(?:live|test)_[a-zA-Z0-9]{16,}'''
+keywords = ["sk_live_", "sk_test_"]
+
+[[rules]]
+id = "stripe-webhook-secret"
+description = "Stripe Webhook Secret"
+regex = '''whsec_[a-zA-Z0-9]{16,}'''
+keywords = ["whsec_"]
+
+[[rules]]
+id = "clerk-webhook-secret"
+description = "Clerk/Svix Webhook Secret"
+regex = '''svix_[a-zA-Z0-9]{16,}'''
+keywords = ["svix_"]
+
+[[rules]]
+id = "logfire-token"
+description = "Logfire Token"
+regex = '''pylf_[a-zA-Z0-9_-]{16,}'''
+keywords = ["pylf_"]
+
+[[rules]]
+id = "pypi-token"
+description = "PyPI Token"
+regex = '''pypi-[a-zA-Z0-9_-]{16,}'''
+keywords = ["pypi-"]
+
+# --- Generic env var assignment patterns (catch KEY=value in code/configs) ---
+
+[[rules]]
+id = "env-api-key-assignment"
+description = "API key assigned in env var"
+regex = '''(?i)(ANTHROPIC_API_KEY|RAYSURFER_API_KEY|RAYSURFER_ADMIN_API_KEY|RAYSURFER_DEMO_API_KEY|PINECONE_API_KEY|VOYAGE_API_KEY|OPENAI_API_KEY|OPENROUTER_API_KEY|FIREWORKS_API_KEY|GEMINI_API_KEY|E2B_API_KEY|DAYTONA_API_KEY|RESEND_API_KEY|MINTLIFY_ADMIN_API_KEY|LOGFIRE_API_KEY|LOGFIRE_TOKEN|LOGFIRE_READ_TOKEN|CLOUDFLARE_GLOBAL_API_KEY)\s*=\s*['"]?[a-zA-Z0-9_-]{10,}'''
+keywords = [
+    "ANTHROPIC_API_KEY", "RAYSURFER_API_KEY", "RAYSURFER_ADMIN_API_KEY",
+    "RAYSURFER_DEMO_API_KEY", "PINECONE_API_KEY", "VOYAGE_API_KEY",
+    "OPENAI_API_KEY", "OPENROUTER_API_KEY", "FIREWORKS_API_KEY",
+    "GEMINI_API_KEY", "E2B_API_KEY", "DAYTONA_API_KEY", "RESEND_API_KEY",
+    "MINTLIFY_ADMIN_API_KEY", "LOGFIRE_API_KEY", "LOGFIRE_TOKEN",
+    "LOGFIRE_READ_TOKEN", "CLOUDFLARE_GLOBAL_API_KEY",
+]
+
+[[rules]]
+id = "env-secret-assignment"
+description = "Secret assigned in env var"
+regex = '''(?i)(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|CLERK_SECRET_KEY|CLERK_WEBHOOK_SECRET|INTERNAL_WEBHOOK_SECRET|DATABASE_PASSWORD|R2_SECRET_ACCESS_KEY|R2_ACCESS_KEY_ID|EMAIL_APP_PASSWORD|PYPI_TOKEN|GITHUB_TOKEN|GITHUB_PAT_TOKEN|PAT_TOKEN|SECRET_KEY|PRIVATE_KEY)\s*=\s*['"]?[a-zA-Z0-9_-]{8,}'''
+keywords = [
+    "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "CLERK_SECRET_KEY",
+    "CLERK_WEBHOOK_SECRET", "INTERNAL_WEBHOOK_SECRET", "DATABASE_PASSWORD",
+    "R2_SECRET_ACCESS_KEY", "R2_ACCESS_KEY_ID", "EMAIL_APP_PASSWORD",
+    "PYPI_TOKEN", "GITHUB_TOKEN", "GITHUB_PAT_TOKEN", "PAT_TOKEN",
+    "SECRET_KEY", "PRIVATE_KEY",
+]
+
+[[rules]]
+id = "env-stripe-ids"
+description = "Stripe IDs assigned in env var"
+regex = '''(?i)(STRIPE_METER_ID|STRIPE_PRICE_ID_ENTERPRISE|STRIPE_PRICE_ID_OVERAGE|STRIPE_PRICE_ID_PRO|STRIPE_PRODUCT_ID|NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)\s*=\s*['"]?[a-zA-Z0-9_-]{10,}'''
+keywords = [
+    "STRIPE_METER_ID", "STRIPE_PRICE_ID", "STRIPE_PRODUCT_ID",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+]
+
+[[rules]]
+id = "env-database-connection"
+description = "Database connection string"
+regex = '''(?i)(DATABASE_URL|DATABASE_HOST)\s*=\s*['"]?[a-zA-Z0-9_/.:-]{10,}'''
+keywords = ["DATABASE_URL", "DATABASE_HOST"]
+
+[[rules]]
+id = "env-posthog-key"
+description = "PostHog key in env var"
+regex = '''(?i)(NEXT_PUBLIC_POSTHOG_KEY)\s*=\s*['"]?phc_[a-zA-Z0-9]{16,}'''
+keywords = ["POSTHOG_KEY"]
+
+[[rules]]
+id = "env-clerk-publishable"
+description = "Clerk publishable key in env var"
+regex = '''(?i)(NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)\s*=\s*['"]?pk_(?:live|test)_[a-zA-Z0-9]{16,}'''
+keywords = ["CLERK_PUBLISHABLE_KEY"]
