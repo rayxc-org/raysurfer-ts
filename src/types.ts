@@ -182,6 +182,7 @@ export interface SubmitExecutionResultResponse {
   success: boolean;
   codeBlocksStored: number;
   message: string;
+  snippetName?: string | null;
 }
 
 export interface BulkExecutionResultRequest {
@@ -247,6 +248,7 @@ export interface SearchMatch {
   entrypoint: string;
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
   dependencies: Record<string, string>;
+  comments: Record<string, unknown>[];
 }
 
 /** Response from unified search endpoint */

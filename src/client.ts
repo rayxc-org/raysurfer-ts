@@ -547,6 +547,7 @@ export class RaySurfer {
       success: boolean;
       code_blocks_stored: number;
       message: string;
+      snippet_name?: string | null;
     }>(
       "POST",
       "/api/store/execution-result",
@@ -558,6 +559,7 @@ export class RaySurfer {
       success: result.success,
       codeBlocksStored: result.code_blocks_stored,
       message: result.message,
+      snippetName: result.snippet_name ?? null,
     };
   }
 
@@ -733,6 +735,7 @@ export class RaySurfer {
         language: string;
         entrypoint: string;
         dependencies: string[] | Record<string, string>;
+        comments?: Record<string, unknown>[];
       }>;
       total_found: number;
       cache_hit: boolean;
@@ -759,6 +762,7 @@ export class RaySurfer {
           language: m.language,
           entrypoint: m.entrypoint,
           dependencies: normalizeDependencies(m.dependencies),
+          comments: m.comments ?? [],
         };
       }),
       totalFound: result.total_found,
