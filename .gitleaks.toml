@@ -1,0 +1,29 @@
+[extend]
+useDefault = true
+
+[allowlist]
+paths = ['''.gitleaks.toml''']
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "raysurfer-api-key"
+description = "Raysurfer API Key"
+regex = '''rs_[a-zA-Z0-9]{16,}'''
+keywords = ["rs_"]
+
+[[rules]]
+id = "pinecone-api-key"
+description = "Pinecone API Key"
+regex = '''pc-[a-zA-Z0-9]{16,}'''
+keywords = ["pc-"]
+
+[[rules]]
+id = "voyage-api-key"
+description = "Voyage AI API Key"
+regex = '''pa-[a-zA-Z0-9]{16,}'''
+keywords = ["pa-"]
