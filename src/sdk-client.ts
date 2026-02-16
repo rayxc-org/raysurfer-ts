@@ -34,6 +34,34 @@ import type { CodeFile, FileWritten } from "./types";
 const DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com";
 const CACHE_DIR = ".raysurfer_code";
 
+// ---------------------------------------------------------------------------
+// Internal message shape interfaces for _trackMessage type safety
+// ---------------------------------------------------------------------------
+
+/** Content block within an assistant message */
+interface ContentBlock {
+  type: string;
+  name?: string;
+  text?: string;
+  content?: string;
+  input?: { file_path?: string; notebook_path?: string; command?: string };
+}
+
+/** Shape of msg.message on assistant-type SDK messages */
+interface AssistantMessagePayload {
+  content?: ContentBlock[];
+}
+
+/** SDK message with discriminated type/subtype fields used in _trackMessage */
+interface TrackedMessage {
+  type: string;
+  subtype?: string;
+  message?: AssistantMessagePayload;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  num_turns?: number;
+}
+
 // File modification tools to track
 const FILE_MODIFY_TOOLS = ["Write", "Edit", "MultiEdit", "NotebookEdit"];
 
@@ -79,11 +107,22 @@ const BASH_OUTPUT_PATTERNS = [
 
 // Debug logger - enabled via RAYSURFER_DEBUG=true or debug option
 const createDebugLogger = (enabled: boolean) => ({
-  log: (...args: unknown[]) => enabled && console.log("[raysurfer]", ...args),
+  log: (
+    ...args: Array<
+      | string
+      | number
+      | boolean
+      | null
+      | undefined
+      | Error
+      | Record<string, string | number>
+    >
+  ) => enabled && console.log("[raysurfer]", ...args),
   time: (label: string) => enabled && console.time(`[raysurfer] ${label}`),
   timeEnd: (label: string) =>
     enabled && console.timeEnd(`[raysurfer] ${label}`),
-  table: (data: unknown) => enabled && console.table(data),
+  table: (data: Array<Record<string, string>>) =>
+    enabled && console.table(data),
   group: (label: string) => enabled && console.group(`[raysurfer] ${label}`),
   groupEnd: () => enabled && console.groupEnd(),
 });
@@ -269,15 +308,16 @@ class RaysurferQuery {
               this._modifiedFilePaths.add(filePath);
             }
           } catch (writeErr) {
-            this._debug.log("Failed to write cached files:", writeErr);
+            this._debug.log(
+              "Failed to write cached files:",
+              writeErr instanceof Error ? writeErr : String(writeErr),
+            );
           }
         }
       } catch (error) {
-        this._debug.log("Cache lookup failed:", error);
-        console.warn(
-          "[raysurfer] Cache unavailable:",
-          error instanceof Error ? error.message : error,
-        );
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this._debug.log("Cache lookup failed:", errMsg);
+        console.warn("[raysurfer] Cache unavailable:", errMsg);
       }
     }
 
@@ -357,73 +397,63 @@ class RaysurferQuery {
   /** Track a message for file modifications and code block extraction */
   private _trackMessage(message: SDKMessage): void {
     this._messageCount++;
-    const msg = message as Record<string, unknown>;
+    // Cast once to our internal tracked shape for field access
+    const msg = message as SDKMessage & TrackedMessage;
     const elapsed = Date.now() - this._startTime;
 
     this._debug.log(`\n═══════════════════════════════════════════════════`);
     this._debug.log(
-      `Message #${this._messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype || "none"}`,
+      `Message #${this._messageCount} [${elapsed}ms] type=${msg.type} subtype=${msg.subtype ?? "none"}`,
     );
     this._debug.log(`═══════════════════════════════════════════════════`);
     this._debug.log(JSON.stringify(msg, null, 2));
 
     // Track file modification tool calls AND extract code from text responses
-    if (msg.type === "assistant") {
-      const content = msg.message as Record<string, unknown> | undefined;
-      const contentBlocks = content?.content as
-        | Array<Record<string, unknown>>
-        | undefined;
-      if (contentBlocks) {
-        for (const block of contentBlocks) {
-          // Track file modification tools
-          if (
-            block.type === "tool_use" &&
-            FILE_MODIFY_TOOLS.includes(block.name as string)
-          ) {
-            const input = block.input as Record<string, unknown> | undefined;
-            const filePath = (input?.file_path ?? input?.notebook_path) as
-              | string
-              | undefined;
-            if (filePath) {
-              this._debug.log(`  → ${block.name} tool detected:`, filePath);
-              this._modifiedFilePaths.add(filePath);
-            }
+    if (msg.type === "assistant" && msg.message?.content) {
+      // Use our ContentBlock shape to access fields the SDK types don't expose
+      const blocks = msg.message.content as ContentBlock[];
+      for (const block of blocks) {
+        // Track file modification tools
+        if (
+          block.type === "tool_use" &&
+          block.name &&
+          FILE_MODIFY_TOOLS.includes(block.name)
+        ) {
+          const filePath = block.input?.file_path ?? block.input?.notebook_path;
+          if (filePath) {
+            this._debug.log(`  → ${block.name} tool detected:`, filePath);
+            this._modifiedFilePaths.add(filePath);
           }
+        }
 
-          // Track Bash command file outputs
-          if (block.type === "tool_use" && block.name === "Bash") {
-            const input = block.input as Record<string, unknown> | undefined;
-            const command = input?.command as string | undefined;
-            if (command) {
-              this._extractBashOutputFiles(command);
-            }
+        // Track Bash command file outputs
+        if (block.type === "tool_use" && block.name === "Bash") {
+          const command = block.input?.command;
+          if (command) {
+            this._extractBashOutputFiles(command);
           }
+        }
 
-          // Capture tool_result content as execution logs
-          if (block.type === "tool_result") {
-            const resultContent = block.content as string | undefined;
-            if (resultContent) {
-              this._executionLogs.push(resultContent.slice(0, 5000));
-            }
-          }
+        // Capture tool_result content as execution logs
+        if (block.type === "tool_result" && block.content) {
+          this._executionLogs.push(block.content.slice(0, 5000));
+        }
 
-          // Extract code blocks from text responses
-          if (block.type === "text") {
-            const text = block.text as string;
-            const codeMatches = text.match(
-              /```(?:typescript|javascript|ts|js)?\n?([\s\S]*?)\n?```/g,
-            );
-            if (codeMatches) {
-              for (const match of codeMatches) {
-                const code = match
-                  .replace(/```(?:typescript|javascript|ts|js)?\n?/, "")
-                  .replace(/\n?```$/, "");
-                if (code.trim().length > 50) {
-                  this._generatedCodeBlocks.push(code.trim());
-                  this._debug.log(
-                    `  → Extracted code block (${code.length} chars)`,
-                  );
-                }
+        // Extract code blocks from text responses
+        if (block.type === "text" && block.text) {
+          const codeMatches = block.text.match(
+            /```(?:typescript|javascript|ts|js)?\n?([\s\S]*?)\n?```/g,
+          );
+          if (codeMatches) {
+            for (const match of codeMatches) {
+              const code = match
+                .replace(/```(?:typescript|javascript|ts|js)?\n?/, "")
+                .replace(/\n?```$/, "");
+              if (code.trim().length > 50) {
+                this._generatedCodeBlocks.push(code.trim());
+                this._debug.log(
+                  `  → Extracted code block (${code.length} chars)`,
+                );
               }
             }
           }
@@ -436,10 +466,9 @@ class RaysurferQuery {
       this._taskSucceeded = true;
       this._debug.timeEnd("Claude API call");
       this._debug.log("Task succeeded!");
-      const result = msg as Record<string, unknown>;
-      this._debug.log("  Duration:", result.duration_ms, "ms");
-      this._debug.log("  Total cost:", result.total_cost_usd, "USD");
-      this._debug.log("  Turns:", result.num_turns);
+      this._debug.log("  Duration:", msg.duration_ms, "ms");
+      this._debug.log("  Total cost:", msg.total_cost_usd, "USD");
+      this._debug.log("  Turns:", msg.num_turns);
     }
 
     if (msg.type === "result" && msg.subtype !== "success") {
@@ -482,7 +511,11 @@ class RaysurferQuery {
           this._debug.log("  → File not found:", filePath);
         }
       } catch (err) {
-        this._debug.log("  → Failed to read file:", filePath, err);
+        this._debug.log(
+          "  → Failed to read file:",
+          filePath,
+          err instanceof Error ? err : String(err),
+        );
       }
     }
 
@@ -590,11 +623,9 @@ class RaysurferQuery {
             "files stored",
           );
         } catch (error) {
-          this._debug.log("Cache upload failed:", error);
-          console.warn(
-            "[raysurfer] Cache upload failed:",
-            error instanceof Error ? error.message : error,
-          );
+          const errMsg = error instanceof Error ? error.message : String(error);
+          this._debug.log("Cache upload failed:", errMsg);
+          console.warn("[raysurfer] Cache upload failed:", errMsg);
         }
       }
     }

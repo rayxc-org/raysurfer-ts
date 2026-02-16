@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.5.10";
+export const VERSION = "0.7.3";
 
 import type {
   AgentReview,
@@ -30,8 +30,8 @@ import type {
   FileWritten,
   GetCodeFilesResponse,
   GetExecutionsParams,
+  JsonValue,
   LogFile,
-  PublicSnippet,
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
@@ -47,6 +47,25 @@ import type {
   ToolCallRecord,
   ToolDefinition,
 } from "./types";
+
+/** Raw snake_case shape returned by the API for code blocks */
+interface RawCodeBlockData {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  entrypoint: string;
+  input_schema?: Record<string, JsonValue>;
+  output_schema?: Record<string, JsonValue>;
+  language: string;
+  language_version?: string | null;
+  dependencies?: string[] | Record<string, string>;
+  tags?: string[];
+  capabilities?: string[];
+  example_queries?: string[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
 
 const DEFAULT_BASE_URL = "https://api.raysurfer.com";
 
@@ -96,8 +115,8 @@ export interface StoreCodeBlockParams {
   entrypoint: string;
   language: string;
   description?: string;
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
+  inputSchema?: Record<string, JsonValue>;
+  outputSchema?: Record<string, JsonValue>;
   languageVersion?: string;
   dependencies?: string[];
   tags?: string[];
@@ -108,8 +127,8 @@ export interface StoreCodeBlockParams {
 export interface StoreExecutionParams {
   codeBlockId: string;
   triggeringTask: string;
-  inputData: Record<string, unknown>;
-  outputData: unknown;
+  inputData: Record<string, JsonValue>;
+  outputData: JsonValue;
   executionState?: ExecutionState;
   durationMs?: number;
   errorMessage?: string;
@@ -167,7 +186,7 @@ export interface SearchParams {
   topK?: number;
   minVerdictScore?: number;
   preferComplete?: boolean;
-  inputSchema?: Record<string, unknown>;
+  inputSchema?: Record<string, JsonValue>;
   /** Override client-level workspaceId for this request */
   workspaceId?: string;
 }
@@ -199,10 +218,16 @@ export class RaySurfer {
     this.registeredTools = new Map();
   }
 
-  private async request<T>(
+  private async request<
+    T,
+    B extends Record<
+      string,
+      string | number | boolean | null | undefined | object
+    > = Record<string, string | number | boolean | null | undefined | object>,
+  >(
     method: string,
     path: string,
-    body?: unknown,
+    body?: B,
     headersOverride?: Record<string, string>,
   ): Promise<T> {
     const headers: Record<string, string> = {
@@ -492,56 +517,27 @@ export class RaySurfer {
     }
 
     const [resolvedFile] = normalizedFiles;
-    const data: Record<string, unknown> = {
+    const data = {
       task: opts.task,
       file_written: resolvedFile,
       succeeded: opts.succeeded,
       use_raysurfer_ai_voting: effectiveVoting,
+      user_vote: opts.userVote,
+      execution_logs: opts.executionLogs,
+      cached_code_blocks:
+        opts.cachedCodeBlocks && opts.cachedCodeBlocks.length > 0
+          ? opts.cachedCodeBlocks.map((cb) => ({
+              code_block_id: cb.codeBlockId,
+              filename: cb.filename,
+              description: cb.description,
+            }))
+          : undefined,
+      run_url: opts.runUrl,
+      dependencies: opts.dependencies,
+      public: opts.public || undefined,
+      vote_source: opts.voteSource,
+      vote_count: opts.voteCount,
     };
-
-    // User-provided vote (skips AI voting automatically)
-    if (opts.userVote !== undefined) {
-      data.user_vote = opts.userVote;
-    }
-
-    // Include execution logs for vote context if provided
-    if (opts.executionLogs) {
-      data.execution_logs = opts.executionLogs;
-    }
-
-    // Include cached code blocks for backend voting if provided
-    if (opts.cachedCodeBlocks && opts.cachedCodeBlocks.length > 0) {
-      data.cached_code_blocks = opts.cachedCodeBlocks.map((cb) => ({
-        code_block_id: cb.codeBlockId,
-        filename: cb.filename,
-        description: cb.description,
-      }));
-    }
-
-    // Include run URL for linking to finished run logs
-    if (opts.runUrl) {
-      data.run_url = opts.runUrl;
-    }
-
-    // Include dependencies with versions if provided
-    if (opts.dependencies) {
-      data.dependencies = opts.dependencies;
-    }
-
-    // Upload to public community namespace
-    if (opts.public) {
-      data.public = true;
-    }
-
-    // Vote source attribution (ai or human)
-    if (opts.voteSource !== undefined) {
-      data.vote_source = opts.voteSource;
-    }
-
-    // Explicit vote count override
-    if (opts.voteCount !== undefined) {
-      data.vote_count = opts.voteCount;
-    }
 
     const result = await this.request<{
       success: boolean;
@@ -665,27 +661,15 @@ export class RaySurfer {
         };
       }) ?? [];
 
-    const data: Record<string, unknown> = {
+    const data = {
       prompts: opts.prompts,
       files_written: opts.filesWritten,
       log_files: normalizedLogs.length > 0 ? normalizedLogs : undefined,
       use_raysurfer_ai_voting: opts.useRaysurferAiVoting ?? true,
+      user_votes: opts.userVotes,
+      vote_source: opts.voteSource,
+      vote_count: opts.voteCount,
     };
-
-    // User-provided votes (skips AI grading automatically)
-    if (opts.userVotes) {
-      data.user_votes = opts.userVotes;
-    }
-
-    // Vote source attribution (ai or human)
-    if (opts.voteSource !== undefined) {
-      data.vote_source = opts.voteSource;
-    }
-
-    // Explicit vote count override
-    if (opts.voteCount !== undefined) {
-      data.vote_count = opts.voteCount;
-    }
 
     const result = await this.request<{
       success: boolean;
@@ -725,7 +709,7 @@ export class RaySurfer {
 
     const result = await this.request<{
       matches: Array<{
-        code_block: Record<string, unknown>;
+        code_block: RawCodeBlockData;
         score: number;
         vector_score?: number;
         verdict_score?: number;
@@ -735,7 +719,7 @@ export class RaySurfer {
         language: string;
         entrypoint: string;
         dependencies: string[] | Record<string, string>;
-        comments?: Record<string, unknown>[];
+        comments?: Record<string, JsonValue>[];
       }>;
       total_found: number;
       cache_hit: boolean;
@@ -837,8 +821,8 @@ export class RaySurfer {
     const result = await this.request<{
       examples: Array<{
         task: string;
-        input_sample: Record<string, unknown>;
-        output_sample: unknown;
+        input_sample: Record<string, JsonValue>;
+        output_sample: JsonValue;
         code_snippet: string;
       }>;
     }>("POST", "/api/retrieve/few-shot-examples", data);
@@ -1040,9 +1024,9 @@ export class RaySurfer {
         error_message: string | null;
         error_type: string | null;
         io: {
-          input_data: Record<string, unknown>;
+          input_data: Record<string, JsonValue>;
           input_hash: string;
-          output_data: unknown;
+          output_data: JsonValue;
           output_hash: string;
           output_type: string;
         };
@@ -1161,14 +1145,12 @@ export class RaySurfer {
   async browsePublic(
     params: BrowsePublicParams = {},
   ): Promise<BrowsePublicResponse> {
-    const data: Record<string, unknown> = {
+    const data = {
       limit: params.limit ?? 20,
       offset: params.offset ?? 0,
       sort_by: params.sortBy ?? "upvoted",
+      language: params.language,
     };
-    if (params.language) {
-      data.language = params.language;
-    }
 
     const result = await this.request<{
       snippets: Array<{
@@ -1209,13 +1191,11 @@ export class RaySurfer {
   async searchPublic(
     params: SearchPublicParams,
   ): Promise<SearchPublicResponse> {
-    const data: Record<string, unknown> = {
+    const data = {
       query: params.query,
       limit: params.limit ?? 20,
+      language: params.language,
     };
-    if (params.language) {
-      data.language = params.language;
-    }
 
     const result = await this.request<{
       snippets: Array<{
@@ -1260,7 +1240,7 @@ export class RaySurfer {
   tool(
     name: string,
     description: string,
-    parameters: Record<string, unknown>,
+    parameters: Record<string, JsonValue>,
     callback: ToolCallback,
   ): void {
     this.registeredTools.set(name, {
@@ -1301,7 +1281,7 @@ export class RaySurfer {
         type: string;
         request_id?: string;
         tool_name?: string;
-        arguments?: Record<string, unknown>;
+        arguments?: Record<string, JsonValue>;
       };
       try {
         msg = JSON.parse(raw);
@@ -1375,7 +1355,7 @@ export class RaySurfer {
       error: string | null;
       tool_calls: Array<{
         tool_name: string;
-        arguments: Record<string, unknown>;
+        arguments: Record<string, JsonValue>;
         result: string | null;
         error: string | null;
         duration_ms: number;
@@ -1436,25 +1416,23 @@ export class RaySurfer {
   // Helpers
   // =========================================================================
 
-  private parseCodeBlock(data: Record<string, unknown>): CodeBlock {
+  private parseCodeBlock(data: RawCodeBlockData): CodeBlock {
     return {
-      id: data.id as string,
-      name: data.name as string,
-      description: data.description as string,
-      source: data.source as string,
-      entrypoint: data.entrypoint as string,
-      inputSchema: (data.input_schema ?? {}) as Record<string, unknown>,
-      outputSchema: (data.output_schema ?? {}) as Record<string, unknown>,
-      language: data.language as string,
-      languageVersion: data.language_version as string | null,
-      dependencies: normalizeDependencies(
-        data.dependencies as string[] | Record<string, string> | undefined,
-      ),
-      tags: (data.tags ?? []) as string[],
-      capabilities: (data.capabilities ?? []) as string[],
-      exampleQueries: data.example_queries as string[] | null,
-      createdAt: data.created_at as string | null,
-      updatedAt: data.updated_at as string | null,
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      source: data.source,
+      entrypoint: data.entrypoint,
+      inputSchema: data.input_schema ?? {},
+      outputSchema: data.output_schema ?? {},
+      language: data.language,
+      languageVersion: data.language_version ?? null,
+      dependencies: normalizeDependencies(data.dependencies),
+      tags: data.tags ?? [],
+      capabilities: data.capabilities ?? [],
+      exampleQueries: data.example_queries ?? null,
+      createdAt: data.created_at ?? null,
+      updatedAt: data.updated_at ?? null,
     };
   }
 }

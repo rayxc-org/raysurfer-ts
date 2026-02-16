@@ -2,6 +2,15 @@
  * RaySurfer SDK types - mirrors the backend API types
  */
 
+/** JSON-serializable value for unstructured execution output data */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 /** Technical execution outcome - NOT a quality judgment */
 export enum ExecutionState {
   COMPLETED = "completed",
@@ -27,8 +36,8 @@ export interface CodeBlock {
   description: string;
   source: string;
   entrypoint: string;
-  inputSchema: Record<string, unknown>;
-  outputSchema: Record<string, unknown>;
+  inputSchema: Record<string, JsonValue>;
+  outputSchema: Record<string, JsonValue>;
   language: string;
   languageVersion?: string | null;
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
@@ -42,9 +51,9 @@ export interface CodeBlock {
 
 /** Stores the actual input/output data */
 export interface ExecutionIO {
-  inputData: Record<string, unknown>;
+  inputData: Record<string, JsonValue>;
   inputHash?: string;
-  outputData?: unknown;
+  outputData?: JsonValue;
   outputHash?: string;
   outputType?: string;
 }
@@ -101,8 +110,8 @@ export interface AlternativeCandidate {
 /** A few-shot example for code generation */
 export interface FewShotExample {
   task: string;
-  inputSample: Record<string, unknown>;
-  outputSample: unknown;
+  inputSample: Record<string, JsonValue>;
+  outputSample: JsonValue;
   codeSnippet: string;
 }
 
@@ -212,8 +221,8 @@ export interface CodeFile {
   source: string;
   entrypoint: string;
   description: string;
-  inputSchema: Record<string, unknown>;
-  outputSchema: Record<string, unknown>;
+  inputSchema: Record<string, JsonValue>;
+  outputSchema: Record<string, JsonValue>;
   language: string;
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
   dependencies: Record<string, string>;
@@ -248,7 +257,7 @@ export interface SearchMatch {
   entrypoint: string;
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
   dependencies: Record<string, string>;
-  comments: Record<string, unknown>[];
+  comments: Record<string, JsonValue>[];
 }
 
 /** Response from unified search endpoint */
@@ -283,8 +292,8 @@ export interface AutoReviewParams {
   executionId: string;
   triggeringTask: string;
   executionState: ExecutionState;
-  inputData: Record<string, unknown>;
-  outputData: unknown;
+  inputData: Record<string, JsonValue>;
+  outputData: JsonValue;
   codeBlockName: string;
   codeBlockDescription: string;
   errorMessage?: string | null;
@@ -400,12 +409,12 @@ export interface SearchPublicParams {
 export interface ToolDefinition {
   name: string;
   description: string;
-  parameters: Record<string, unknown>;
+  parameters: Record<string, JsonValue>;
 }
 
 /** Callback function invoked when the server calls a tool */
 export type ToolCallback = (
-  args: Record<string, unknown>,
+  args: Record<string, JsonValue>,
 ) => Promise<string> | string;
 
 /** Options for the execute method */
@@ -419,7 +428,7 @@ export interface ExecuteOptions {
 /** Record of a single tool call made during execution */
 export interface ToolCallRecord {
   toolName: string;
-  arguments: Record<string, unknown>;
+  arguments: Record<string, JsonValue>;
   result: string | null;
   error: string | null;
   durationMs: number;

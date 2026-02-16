@@ -68,6 +68,7 @@ export type {
   FewShotExample,
   FileWritten,
   GetCodeFilesResponse,
+  JsonValue,
   LogFile,
   PublicSnippet,
   RetrieveBestResponse,
