@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.7.3";
+export const VERSION = "0.8.0";
 
 import type {
   AgentReview,
@@ -1134,6 +1134,40 @@ export class RaySurfer {
       success: result.success,
       votePending: result.vote_pending,
       message: result.message,
+    };
+  }
+
+  /**
+   * Add a comment to a cached code snippet.
+   */
+  async commentOnCodeSnip(params: {
+    codeBlockId: string;
+    text: string;
+  }): Promise<{
+    success: boolean;
+    comment: { id: string; email: string; text: string; createdAt: string };
+  }> {
+    const result = await this.request<{
+      success: boolean;
+      comment: {
+        id: string;
+        email: string;
+        text: string;
+        created_at: string;
+      };
+    }>("POST", "/api/store/comment", {
+      code_block_id: params.codeBlockId,
+      text: params.text,
+    });
+
+    return {
+      success: result.success,
+      comment: {
+        id: result.comment.id,
+        email: result.comment.email,
+        text: result.comment.text,
+        createdAt: result.comment.created_at,
+      },
     };
   }
 
