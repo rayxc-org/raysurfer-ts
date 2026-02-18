@@ -418,9 +418,23 @@ export type ToolCallback = (
 ) => Promise<string> | string;
 
 /** Options for the execute method */
+export interface SandboxCodegenOptions {
+  /** Provider used for sandbox code generation (currently anthropic) */
+  provider?: "anthropic";
+  /** Provider API key that will be injected into the sandbox at runtime */
+  apiKey: string;
+  /** User-provided prompt sent to the provider for code generation */
+  prompt: string;
+  /** Provider model name (default: claude-opus-4-6) */
+  model?: string;
+}
+
+/** Options for the execute method */
 export interface ExecuteOptions {
   /** Python code generated client-side to run directly in sandbox */
-  userCode: string;
+  userCode?: string;
+  /** Optional mode: generate code inside sandbox before execution */
+  codegen?: SandboxCodegenOptions;
   /** Timeout in milliseconds (default 300000 = 5 minutes) */
   timeout?: number;
 }

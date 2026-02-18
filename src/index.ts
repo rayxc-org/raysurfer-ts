@@ -74,6 +74,7 @@ export type {
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
+  SandboxCodegenOptions,
   SearchMatch,
   SearchPublicParams,
   SearchPublicResponse,

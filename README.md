@@ -357,8 +357,9 @@ const rs = new RaySurfer({ apiKey: "...", publicSnips: true });
 
 ## Programmatic Tool Calling
 
-Register local tools and let the server generate + execute code
-that calls them:
+Register local tools, then either:
+1) pass in `userCode` (primary mode), or
+2) generate code inside the sandbox with your own provider key + prompt (optional mode).
 
 ```typescript
 import { RaySurfer } from "raysurfer";
@@ -373,19 +374,24 @@ rs.tool("multiply", "Multiply two numbers together", { a: "integer", b: "integer
   async (args) => String(Number(args.a) * Number(args.b))
 );
 
+const userCode = `
+intermediate = add(5, 3)
+final = multiply(intermediate, 2)
+print(final)
+`;
 const result = await rs.execute(
-  "Add 5 and 3, then multiply the result by 2"
+  "Add 5 and 3, then multiply the result by 2",
+  { userCode }
 );
 console.log(result.result);     // "16"
 console.log(result.toolCalls);  // [{toolName: 'add', ...}, ...]
-console.log(result.cacheHit);   // true on subsequent runs
+console.log(result.cacheHit);   // false (reserved field)
 ```
 
 ### How It Works
 
 1. SDK connects a WebSocket to the server for tool call routing
-2. Server generates Python code (or reuses reference code from a
-   similar prior run)
+2. Your app sends either `userCode` (primary mode) or `codegen` inputs (optional mode) to `/api/execute/run`
 3. Code runs in a sandboxed environment — tool calls are routed
    back to your local functions via WebSocket
 4. Results are returned with full tool call history
@@ -394,8 +400,19 @@ console.log(result.cacheHit);   // true on subsequent runs
 
 ```typescript
 const result = await rs.execute("Your task description", {
-  timeout: 300000,        // Max time in ms (default 300000)
-  forceRegenerate: false, // Skip cache (default false)
+  userCode: "print(add(1, 2))", // Primary mode
+  timeout: 300000,              // Max time in ms (default 300000)
+});
+
+// Optional mode: generate code in sandbox using your own key + prompt
+const sandboxCodegenResult = await rs.execute("Your task description", {
+  codegen: {
+    provider: "anthropic",
+    apiKey: "your_anthropic_key",
+    model: "claude-opus-4-6",
+    prompt: "Write Python code that uses add(a, b) and prints the result for 2 + 3.",
+  },
+  timeout: 300000,
 });
 ```
 
@@ -407,7 +424,7 @@ const result = await rs.execute("Your task description", {
 | `result`      | `string \| null`   | Stdout output from the script    |
 | `exitCode`    | `number`           | Process exit code (0 = success)  |
 | `durationMs`  | `number`           | Total execution time             |
-| `cacheHit`    | `boolean`          | Whether reference code was found |
+| `cacheHit`    | `boolean`          | Reserved field (always `false`)  |
 | `error`       | `string \| null`   | Error message if exitCode != 0   |
 | `toolCalls`   | `ToolCallRecord[]` | All tool calls made              |
 

@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.9.0";
+export const VERSION = "0.11.0";
 
 import type {
   AgentReview,
@@ -1291,16 +1291,41 @@ export class RaySurfer {
     task: string,
     options: ExecuteOptions,
   ): Promise<ExecuteResult> {
-    if (
-      typeof options?.userCode !== "string" ||
-      options.userCode.trim().length === 0
-    ) {
+    const hasUserCode =
+      typeof options?.userCode === "string" &&
+      options.userCode.trim().length > 0;
+    const hasCodegen = options?.codegen !== undefined;
+    if (hasUserCode === hasCodegen) {
       throw new Error(
-        `Invalid userCode value: ${String(options?.userCode)}. Expected a non-empty Python script string. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
+        `Invalid execute mode. Provide exactly one of userCode or codegen. Received userCode=${String(options?.userCode)}, codegen=${String(options?.codegen !== undefined)}. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
       );
     }
+
+    if (hasCodegen) {
+      const apiKey = options.codegen?.apiKey;
+      const prompt = options.codegen?.prompt;
+      const model = options.codegen?.model;
+      if (typeof apiKey !== "string" || apiKey.trim().length === 0) {
+        throw new Error(
+          `Invalid codegen.apiKey value: ${String(apiKey)}. Expected a non-empty API key string. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
+        );
+      }
+      if (typeof prompt !== "string" || prompt.trim().length === 0) {
+        throw new Error(
+          `Invalid codegen.prompt value: ${String(prompt)}. Expected a non-empty prompt string. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
+        );
+      }
+      if (
+        model !== undefined &&
+        (typeof model !== "string" || model.trim().length === 0)
+      ) {
+        throw new Error(
+          `Invalid codegen.model value: ${String(model)}. Expected a non-empty model string when provided. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
+        );
+      }
+    }
+
     const timeout = options.timeout ?? 300000;
-    const userCode = options.userCode;
     const sessionId = crypto.randomUUID();
 
     // Build WebSocket URL: replace http(s) with ws(s)
@@ -1389,6 +1414,35 @@ export class RaySurfer {
       (t) => t.definition,
     );
 
+    const requestBody: {
+      task: string;
+      tools: ToolDefinition[];
+      session_id: string;
+      timeout_seconds: number;
+      user_code?: string;
+      codegen?: {
+        provider: "anthropic";
+        api_key: string;
+        model: string;
+        prompt: string;
+      };
+    } = {
+      task,
+      tools,
+      session_id: sessionId,
+      timeout_seconds: timeout / 1000,
+    };
+    if (hasUserCode) {
+      requestBody.user_code = options.userCode ?? "";
+    } else {
+      requestBody.codegen = {
+        provider: options.codegen?.provider ?? "anthropic",
+        api_key: options.codegen?.apiKey ?? "",
+        model: options.codegen?.model ?? "claude-opus-4-6",
+        prompt: options.codegen?.prompt ?? "",
+      };
+    }
+
     // POST to /api/execute/run
     const response = await this.request<{
       execution_id: string;
@@ -1406,11 +1460,7 @@ export class RaySurfer {
         duration_ms: number;
       }>;
     }>("POST", "/api/execute/run", {
-      task,
-      tools,
-      session_id: sessionId,
-      timeout_seconds: timeout / 1000,
-      user_code: userCode,
+      ...requestBody,
     });
 
     // Close WebSocket
@@ -1448,6 +1498,18 @@ export class RaySurfer {
     return this.execute(task, {
       timeout: options?.timeout,
       userCode,
+    });
+  }
+
+  /** Generate code inside sandbox using provider key+prompt, then execute it. */
+  async executeWithSandboxCodegen(
+    task: string,
+    codegen: NonNullable<ExecuteOptions["codegen"]>,
+    options?: Partial<Pick<ExecuteOptions, "timeout">>,
+  ): Promise<ExecuteResult> {
+    return this.execute(task, {
+      timeout: options?.timeout,
+      codegen,
     });
   }
 

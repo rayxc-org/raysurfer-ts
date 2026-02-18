@@ -1,6 +1,6 @@
 {
   "name": "raysurfer",
-  "version": "0.9.0",
+  "version": "0.11.0",
   "_description_old": "Semantic code caching for LLM agents",
   "_description_old2": "Code reputation layer for AI agents",
   "description": "AI maintained skills for vertical agents",
