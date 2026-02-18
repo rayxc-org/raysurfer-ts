@@ -1286,13 +1286,21 @@ export class RaySurfer {
     });
   }
 
-  /** Execute a task with server-side code generation and tool calling. */
+  /** Execute a task with tool calling in a remote sandbox. */
   async execute(
     task: string,
-    options?: Partial<ExecuteOptions>,
+    options: ExecuteOptions,
   ): Promise<ExecuteResult> {
-    const timeout = options?.timeout ?? 300000;
-    const forceRegenerate = options?.forceRegenerate ?? false;
+    if (
+      typeof options?.userCode !== "string" ||
+      options.userCode.trim().length === 0
+    ) {
+      throw new Error(
+        `Invalid userCode value: ${String(options?.userCode)}. Expected a non-empty Python script string. Docs: https://docs.raysurfer.com/sdk/typescript#programmatic-tool-calling`,
+      );
+    }
+    const timeout = options.timeout ?? 300000;
+    const userCode = options.userCode;
     const sessionId = crypto.randomUUID();
 
     // Build WebSocket URL: replace http(s) with ws(s)
@@ -1402,7 +1410,7 @@ export class RaySurfer {
       tools,
       session_id: sessionId,
       timeout_seconds: timeout / 1000,
-      force_regenerate: forceRegenerate,
+      user_code: userCode,
     });
 
     // Close WebSocket
@@ -1429,6 +1437,18 @@ export class RaySurfer {
       error: response.error,
       toolCalls: serverToolCalls.length > 0 ? serverToolCalls : toolCalls,
     };
+  }
+
+  /** Execute client-generated Python code in the remote sandbox with tool callbacks. */
+  async executeGeneratedCode(
+    task: string,
+    userCode: string,
+    options?: Partial<Pick<ExecuteOptions, "timeout">>,
+  ): Promise<ExecuteResult> {
+    return this.execute(task, {
+      timeout: options?.timeout,
+      userCode,
+    });
   }
 
   // =========================================================================

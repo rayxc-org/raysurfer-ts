@@ -419,10 +419,10 @@ export type ToolCallback = (
 
 /** Options for the execute method */
 export interface ExecuteOptions {
+  /** Python code generated client-side to run directly in sandbox */
+  userCode: string;
   /** Timeout in milliseconds (default 300000 = 5 minutes) */
-  timeout: number;
-  /** Force regeneration instead of using cached code (default false) */
-  forceRegenerate: boolean;
+  timeout?: number;
 }
 
 /** Record of a single tool call made during execution */
