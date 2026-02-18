@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.8.0";
+export const VERSION = "0.9.0";
 
 import type {
   AgentReview,
@@ -185,6 +185,8 @@ export interface SearchParams {
   task: string;
   topK?: number;
   minVerdictScore?: number;
+  /** Minimum number of human upvotes required */
+  minHumanUpvotes?: number;
   preferComplete?: boolean;
   inputSchema?: Record<string, JsonValue>;
   /** Override client-level workspaceId for this request */
@@ -703,6 +705,7 @@ export class RaySurfer {
       task: params.task,
       top_k: params.topK ?? 5,
       min_verdict_score: params.minVerdictScore ?? 0.3,
+      min_human_upvotes: params.minHumanUpvotes ?? 0,
       prefer_complete: params.preferComplete ?? false,
       input_schema: params.inputSchema ?? null,
     };
