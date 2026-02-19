@@ -65,6 +65,7 @@ interface RawCodeBlockData {
   example_queries?: string[] | null;
   created_at?: string | null;
   updated_at?: string | null;
+  agent_id?: string | null;
 }
 
 const DEFAULT_BASE_URL = "https://api.raysurfer.com";
@@ -107,6 +108,8 @@ export interface RaySurferOptions {
   snipsDesired?: SnipsDesired;
   /** Include community public snippets (from github-snips) in retrieval results */
   publicSnips?: boolean;
+  /** Agent ID for scoped search and upload attribution */
+  agentId?: string;
 }
 
 export interface StoreCodeBlockParams {
@@ -204,6 +207,7 @@ export class RaySurfer {
   private workspaceId?: string;
   private snipsDesired?: SnipsDesired;
   private publicSnips?: boolean;
+  private agentId?: string;
   private registeredTools: Map<
     string,
     { definition: ToolDefinition; callback: ToolCallback }
@@ -217,6 +221,7 @@ export class RaySurfer {
     this.workspaceId = options.workspaceId;
     this.snipsDesired = options.snipsDesired;
     this.publicSnips = options.publicSnips;
+    this.agentId = options.agentId;
     this.registeredTools = new Map();
   }
 
@@ -254,6 +259,10 @@ export class RaySurfer {
     // Include community public snippets in retrieval
     if (this.publicSnips) {
       headers["X-Raysurfer-Public-Snips"] = "true";
+    }
+    // Agent ID for scoped search and upload attribution
+    if (this.agentId) {
+      headers["X-Raysurfer-Agent-Id"] = this.agentId;
     }
     // SDK version for tracking
     headers["X-Raysurfer-SDK-Version"] = `typescript/${VERSION}`;
@@ -1552,6 +1561,7 @@ export class RaySurfer {
       exampleQueries: data.example_queries ?? null,
       createdAt: data.created_at ?? null,
       updatedAt: data.updated_at ?? null,
+      agentId: data.agent_id ?? null,
     };
   }
 }

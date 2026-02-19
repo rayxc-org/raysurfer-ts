@@ -47,6 +47,7 @@ export interface CodeBlock {
   exampleQueries?: string[] | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  agentId?: string | null;
 }
 
 /** Stores the actual input/output data */
@@ -185,6 +186,8 @@ export interface SubmitExecutionResultRequest {
   userVote?: number;
   /** URL to the finished run (e.g. logs page, CI run, LangSmith trace) */
   runUrl?: string;
+  /** Agent ID for attributing this upload to a specific agent */
+  agentId?: string;
 }
 
 export interface SubmitExecutionResultResponse {
@@ -258,6 +261,7 @@ export interface SearchMatch {
   /** Package name -> version (e.g., {"pandas": "2.1.0"}) */
   dependencies: Record<string, string>;
   comments: Record<string, JsonValue>[];
+  agentId?: string | null;
 }
 
 /** Response from unified search endpoint */
@@ -352,6 +356,8 @@ export interface UploadNewCodeSnipOptions {
   dependencies?: Record<string, string>;
   /** Upload to the public community namespace (default false) */
   public?: boolean;
+  /** Agent ID for attributing this upload to a specific agent */
+  agentId?: string;
 }
 
 // ============================================================================

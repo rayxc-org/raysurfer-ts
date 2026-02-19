@@ -137,6 +137,8 @@ export interface RaysurferExtras {
   debug?: boolean;
   /** @deprecated Use `cwd` instead */
   workingDirectory?: string;
+  /** Agent ID for scoped search and upload attribution */
+  agentId?: string;
 }
 
 /** Full query options: Claude SDK Options extended with Raysurfer extras */
@@ -171,8 +173,14 @@ function splitOptions(options: RaysurferQueryOptions): {
   sdkOptions: Options;
   extras: RaysurferExtras;
 } {
-  const { workspaceId, publicSnips, debug, workingDirectory, ...sdkOptions } =
-    options;
+  const {
+    workspaceId,
+    publicSnips,
+    debug,
+    workingDirectory,
+    agentId,
+    ...sdkOptions
+  } = options;
   return {
     sdkOptions,
     extras: {
@@ -180,6 +188,7 @@ function splitOptions(options: RaysurferQueryOptions): {
       publicSnips,
       debug,
       workingDirectory,
+      agentId,
     },
   };
 }
@@ -265,6 +274,7 @@ class RaysurferQuery {
         workspaceId: this._extras.workspaceId,
         snipsDesired: this._extras.workspaceId ? "client" : undefined,
         publicSnips: this._extras.publicSnips,
+        agentId: this._extras.agentId,
       });
 
       try {

@@ -17,6 +17,17 @@
 // =============================================================================
 
 export type {
+  AgentAccessibleFunction,
+  AgentAccessibleSchema,
+} from "./accessible";
+export { agentAccessible, publishFunctionRegistry } from "./accessible";
+export type {
+  CodegenAppOptions,
+  CodegenRunGeneratedCodeOptions,
+  CodegenRunOptions,
+} from "./agent";
+export { CodegenApp } from "./agent";
+export type {
   GetCodeFilesParams,
   GetTaskPatternsParams,
   RaySurferOptions,
@@ -27,12 +38,6 @@ export type {
 } from "./client";
 // Direct API client (for advanced use cases)
 export { default as RaySurferDefault, RaySurfer, VERSION } from "./client";
-export { CodegenApp } from "./agent";
-export type {
-  CodegenAppOptions,
-  CodegenRunGeneratedCodeOptions,
-  CodegenRunOptions,
-} from "./agent";
 // Errors
 export {
   APIError,
