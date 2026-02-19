@@ -1498,6 +1498,156 @@ export class RaySurfer {
     };
   }
 
+  /** Execute an S3-stored script in the remote sandbox with tool callbacks. */
+  async runScript(
+    s3Key: string,
+    params?: Record<string, string>,
+    timeout?: number,
+  ): Promise<ExecuteResult> {
+    const resolvedTimeout = timeout ?? 300000;
+    const sessionId = crypto.randomUUID();
+
+    const wsUrl = `${this.baseUrl.replace(/^http/, "ws")}/api/execute/ws/${sessionId}`;
+
+    const toolCalls: ToolCallRecord[] = [];
+
+    const ws = new WebSocket(wsUrl);
+
+    const wsReady = new Promise<void>((resolve, reject) => {
+      ws.addEventListener("open", () => resolve());
+      ws.addEventListener("error", (ev) =>
+        reject(new Error(`WebSocket connection failed: ${String(ev)}`)),
+      );
+    });
+
+    ws.addEventListener("message", async (event) => {
+      const raw =
+        typeof event.data === "string" ? event.data : String(event.data);
+      let msg: {
+        type: string;
+        request_id?: string;
+        tool_name?: string;
+        arguments?: Record<string, JsonValue>;
+      };
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        return;
+      }
+
+      if (msg.type === "tool_call" && msg.request_id && msg.tool_name) {
+        const start = Date.now();
+        const registered = this.registeredTools.get(msg.tool_name);
+        const record: ToolCallRecord = {
+          toolName: msg.tool_name,
+          arguments: msg.arguments ?? {},
+          result: null,
+          error: null,
+          durationMs: 0,
+        };
+
+        try {
+          if (!registered) {
+            throw new Error(`Unknown tool: ${msg.tool_name}`);
+          }
+          const callbackResult = registered.callback(msg.arguments ?? {});
+          const result =
+            callbackResult instanceof Promise
+              ? await callbackResult
+              : callbackResult;
+          record.result = result;
+          record.durationMs = Date.now() - start;
+
+          ws.send(
+            JSON.stringify({
+              type: "tool_result",
+              request_id: msg.request_id,
+              result,
+            }),
+          );
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          record.error = errorMsg;
+          record.durationMs = Date.now() - start;
+
+          ws.send(
+            JSON.stringify({
+              type: "tool_result",
+              request_id: msg.request_id,
+              result: `Error: ${errorMsg}`,
+            }),
+          );
+        }
+
+        toolCalls.push(record);
+      }
+    });
+
+    await wsReady;
+
+    const tools = Array.from(this.registeredTools.values()).map(
+      (t) => t.definition,
+    );
+
+    const requestBody: {
+      s3_key: string;
+      tools: ToolDefinition[];
+      session_id: string;
+      timeout_seconds: number;
+      params?: Record<string, string>;
+    } = {
+      s3_key: s3Key,
+      tools,
+      session_id: sessionId,
+      timeout_seconds: resolvedTimeout / 1000,
+    };
+    if (params) {
+      requestBody.params = params;
+    }
+
+    const response = await this.request<{
+      execution_id: string;
+      result: string | null;
+      exit_code: number;
+      duration_ms: number;
+      cache_hit: boolean;
+      code_block_id: string | null;
+      error: string | null;
+      tool_calls: Array<{
+        tool_name: string;
+        arguments: Record<string, JsonValue>;
+        result: string | null;
+        error: string | null;
+        duration_ms: number;
+      }>;
+    }>("POST", "/api/execute/run-script", {
+      ...requestBody,
+    });
+
+    ws.close();
+
+    const serverToolCalls: ToolCallRecord[] = (response.tool_calls ?? []).map(
+      (tc) => ({
+        toolName: tc.tool_name,
+        arguments: tc.arguments,
+        result: tc.result,
+        error: tc.error,
+        durationMs: tc.duration_ms,
+      }),
+    );
+
+    return {
+      executionId: response.execution_id,
+      result: response.result,
+      exitCode: response.exit_code,
+      durationMs: response.duration_ms,
+      cacheHit: response.cache_hit,
+      codeBlockId: response.code_block_id,
+      error: response.error,
+      toolCalls: serverToolCalls.length > 0 ? serverToolCalls : toolCalls,
+    };
+  }
+
   /** Execute client-generated Python code in the remote sandbox with tool callbacks. */
   async executeGeneratedCode(
     task: string,
