@@ -27,6 +27,12 @@ export type {
 } from "./client";
 // Direct API client (for advanced use cases)
 export { default as RaySurferDefault, RaySurfer, VERSION } from "./client";
+export { CodegenApp } from "./agent";
+export type {
+  CodegenAppOptions,
+  CodegenRunGeneratedCodeOptions,
+  CodegenRunOptions,
+} from "./agent";
 // Errors
 export {
   APIError,
