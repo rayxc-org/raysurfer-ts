@@ -188,6 +188,8 @@ export interface SubmitExecutionResultRequest {
   runUrl?: string;
   /** Agent ID for attributing this upload to a specific agent */
   agentId?: string;
+  /** Optional tags to persist on this snippet (e.g., function_registry) */
+  tags?: string[];
 }
 
 export interface SubmitExecutionResultResponse {
@@ -358,6 +360,8 @@ export interface UploadNewCodeSnipOptions {
   public?: boolean;
   /** Agent ID for attributing this upload to a specific agent */
   agentId?: string;
+  /** Optional tags to persist on this snippet (e.g., function_registry) */
+  tags?: string[];
 }
 
 // ============================================================================

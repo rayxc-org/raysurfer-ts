@@ -33,6 +33,41 @@ import type { CodeFile, FileWritten } from "./types";
 
 const DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com";
 const CACHE_DIR = ".raysurfer_code";
+const DEFAULT_RUN_PARSE_SAMPLE_RATE = 1;
+const RUN_PARSE_SAMPLE_RATE_ENV_VAR = "RAYSURFER_RUN_PARSE_SAMPLE_RATE";
+
+function resolveRunParseSampleRate(configured?: number): number {
+  if (configured !== undefined) {
+    if (!Number.isFinite(configured) || configured < 0 || configured > 1) {
+      throw new Error(
+        `runParseSampleRate must be between 0.0 and 1.0 inclusive; got ${configured}.`,
+      );
+    }
+    return configured;
+  }
+
+  const envValue = process.env[RUN_PARSE_SAMPLE_RATE_ENV_VAR];
+  if (!envValue || envValue.trim() === "") {
+    return DEFAULT_RUN_PARSE_SAMPLE_RATE;
+  }
+
+  const parsed = Number(envValue);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    console.warn(
+      `[raysurfer] ${RUN_PARSE_SAMPLE_RATE_ENV_VAR}=${JSON.stringify(envValue)} is invalid. ` +
+        `Expected a number between 0.0 and 1.0 inclusive. Falling back to ${DEFAULT_RUN_PARSE_SAMPLE_RATE}.`,
+    );
+    return DEFAULT_RUN_PARSE_SAMPLE_RATE;
+  }
+
+  return parsed;
+}
+
+function shouldParseRunForAiVoting(sampleRate: number): boolean {
+  if (sampleRate >= 1) return true;
+  if (sampleRate <= 0) return false;
+  return Math.random() < sampleRate;
+}
 
 // ---------------------------------------------------------------------------
 // Internal message shape interfaces for _trackMessage type safety
@@ -135,6 +170,8 @@ export interface RaysurferExtras {
   publicSnips?: boolean;
   /** Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var */
   debug?: boolean;
+  /** Fraction of runs to parse for AI voting (0.0-1.0). Default is 1.0. */
+  runParseSampleRate?: number;
   /** @deprecated Use `cwd` instead */
   workingDirectory?: string;
   /** Agent ID for scoped search and upload attribution */
@@ -177,6 +214,7 @@ function splitOptions(options: RaysurferQueryOptions): {
     workspaceId,
     publicSnips,
     debug,
+    runParseSampleRate,
     workingDirectory,
     agentId,
     ...sdkOptions
@@ -187,6 +225,7 @@ function splitOptions(options: RaysurferQueryOptions): {
       workspaceId,
       publicSnips,
       debug,
+      runParseSampleRate,
       workingDirectory,
       agentId,
     },
@@ -223,6 +262,8 @@ class RaysurferQuery {
   private _baseUrl: string;
   private _extras: RaysurferExtras;
   private _sdkOptions: Options;
+  private _runParseSampleRate: number;
+  private _parseRunForAiVoting: boolean;
 
   constructor(params: QueryParams) {
     this._params = params;
@@ -242,6 +283,12 @@ class RaysurferQuery {
     this._apiKey = process.env.RAYSURFER_API_KEY;
     this._baseUrl = process.env.RAYSURFER_BASE_URL || DEFAULT_RAYSURFER_URL;
     this._cacheEnabled = !!this._apiKey;
+    this._runParseSampleRate = resolveRunParseSampleRate(
+      extras.runParseSampleRate,
+    );
+    this._parseRunForAiVoting = shouldParseRunForAiVoting(
+      this._runParseSampleRate,
+    );
 
     // Working directory: cwd > workingDirectory (deprecated) > process.cwd()
     if (extras.workingDirectory && !sdkOptions.cwd) {
@@ -258,6 +305,8 @@ class RaysurferQuery {
     this._debug.log("Prompt:", this._promptText ?? "<stream>");
     this._debug.log("Cache enabled:", this._cacheEnabled);
     this._debug.log("Base URL:", this._baseUrl);
+    this._debug.log("Run parse sample rate:", this._runParseSampleRate);
+    this._debug.log("Parse this run for AI voting:", this._parseRunForAiVoting);
 
     if (!this._cacheEnabled) {
       console.warn("[raysurfer] RAYSURFER_API_KEY not set - caching disabled");
@@ -446,7 +495,9 @@ class RaysurferQuery {
 
         // Capture tool_result content as execution logs
         if (block.type === "tool_result" && block.content) {
-          this._executionLogs.push(block.content.slice(0, 5000));
+          if (this._parseRunForAiVoting) {
+            this._executionLogs.push(block.content.slice(0, 5000));
+          }
         }
 
         // Extract code blocks from text responses
@@ -573,17 +624,24 @@ class RaysurferQuery {
       this._taskSucceeded &&
       this._promptText
     ) {
-      const cachedBlocksForVoting = this._cachedFiles.map((f) => ({
-        codeBlockId: f.codeBlockId,
-        filename: f.filename,
-        description: f.description,
-      }));
+      const cachedBlocksForVoting = this._parseRunForAiVoting
+        ? this._cachedFiles.map((f) => ({
+            codeBlockId: f.codeBlockId,
+            filename: f.filename,
+            description: f.description,
+          }))
+        : [];
 
       if (filesToCache.length > 0 || cachedBlocksForVoting.length > 0) {
         try {
           this._debug.time("Cache upload + voting");
+          if (!this._parseRunForAiVoting) {
+            this._debug.log(
+              "Skipping AI voting parse for this run due sampling",
+            );
+          }
           const joinedLogs =
-            this._executionLogs.length > 0
+            this._parseRunForAiVoting && this._executionLogs.length > 0
               ? this._executionLogs.join("\n---\n")
               : undefined;
           this._debug.log(
@@ -597,8 +655,7 @@ class RaysurferQuery {
           );
           // Upload each file individually (single-file endpoint)
           // Pass cachedCodeBlocks only on the first call to trigger voting once
-          for (let i = 0; i < filesToCache.length; i++) {
-            const file = filesToCache[i]!;
+          for (const [i, file] of filesToCache.entries()) {
             await this._raysurfer.uploadNewCodeSnip(
               this._promptText,
               file,
@@ -606,7 +663,7 @@ class RaysurferQuery {
               i === 0 && cachedBlocksForVoting.length > 0
                 ? cachedBlocksForVoting
                 : undefined,
-              true, // useRaysurferAiVoting
+              this._parseRunForAiVoting,
               undefined, // userVote
               joinedLogs,
             );

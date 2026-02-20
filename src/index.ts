@@ -20,7 +20,17 @@ export type {
   AgentAccessibleFunction,
   AgentAccessibleSchema,
 } from "./accessible";
-export { agentAccessible, publishFunctionRegistry } from "./accessible";
+export {
+  agentAccessible,
+  publishFunctionRegistry,
+  setTrackingClient,
+} from "./accessible";
+export type {
+  AgentAccessRules,
+  ModuleFunctionMap,
+  RaysurferConfig,
+} from "./config";
+export { loadConfig } from "./config";
 export type {
   CodegenAppOptions,
   CodegenRunGeneratedCodeOptions,
