@@ -3,13 +3,10 @@
  */
 
 import type { RaySurfer } from "./client";
-import { ExecutionState } from "./types";
 import type { JsonValue } from "./types";
+import { ExecutionState } from "./types";
 
-type JsonLike =
-  | JsonValue
-  | { [key: string]: JsonLike }
-  | JsonLike[];
+type JsonLike = JsonValue | { [key: string]: JsonLike } | JsonLike[];
 
 type AccessibleReturn = JsonLike | object | Promise<JsonLike | object>;
 type AccessibleArgs = Array<JsonLike | object>;
@@ -19,18 +16,19 @@ export type AgentCallable = (...args: AccessibleArgs) => AccessibleReturn;
 export interface AgentAccessibleSchema {
   name: string;
   description: string;
+  inputSchema: Record<string, JsonValue>;
+  /** @deprecated Use inputSchema instead */
   parameters: Record<string, JsonValue>;
   source: string;
   codeBlockId?: string;
 }
 
 /** A function marked as agent-accessible */
-export type AgentAccessibleFunction<T extends AgentCallable> =
-  T & {
-    _raysurferAccessible: true;
-    _raysurferSchema: AgentAccessibleSchema;
-    _raysurferClient?: RaySurfer;
-  };
+export type AgentAccessibleFunction<T extends AgentCallable> = T & {
+  _raysurferAccessible: true;
+  _raysurferSchema: AgentAccessibleSchema;
+  _raysurferClient?: RaySurfer;
+};
 
 function toJsonLike(value: JsonLike | object | undefined): JsonLike {
   if (
@@ -95,16 +93,52 @@ function queueUsageTracking(
 }
 
 /**
+ * Extract parameter names from a function's toString() representation.
+ * Best-effort: all inferred types default to "string".
+ */
+function inferParameters(fn: AgentCallable): Record<string, JsonValue> {
+  const src = fn.toString();
+  const match = /^[^(]*\(([^)]*)\)/.exec(src);
+  const paramStr = match?.[1];
+  if (!paramStr?.trim()) return {};
+  const params: Record<string, JsonValue> = {};
+  const parts = paramStr.split(",");
+  for (const part of parts) {
+    const cleaned = part
+      .trim()
+      .replace(/\/\*.*?\*\//g, "")
+      .replace(/=.*$/, "")
+      .replace(/:.*$/, "")
+      .trim();
+    if (cleaned && cleaned !== "..." && !cleaned.startsWith("...")) {
+      params[cleaned] = "string";
+    }
+  }
+  return params;
+}
+
+/**
  * Mark a function as callable by agents and attach metadata.
+ * All options are optional — name and parameters are auto-inferred
+ * from the function when not provided.
  */
 export function agentAccessible<T extends AgentCallable>(
   fn: T,
-  options: {
-    name: string;
-    description: string;
-    parameters: Record<string, JsonValue>;
+  options?: {
+    name?: string;
+    description?: string;
+    inputSchema?: Record<string, JsonValue>;
+    /** @deprecated Use inputSchema instead */
+    parameters?: Record<string, JsonValue>;
+    orgId?: string;
+    workspaceId?: string;
   },
 ): AgentAccessibleFunction<T> {
+  const resolvedName = options?.name ?? fn.name ?? "anonymous";
+  const resolvedDescription = options?.description ?? "";
+  const resolvedSchema =
+    options?.inputSchema ?? options?.parameters ?? inferParameters(fn);
+
   let marked: AgentAccessibleFunction<T>;
   const wrapped = (...args: Parameters<T>): AccessibleReturn => {
     const started = Date.now();
@@ -166,12 +200,29 @@ export function agentAccessible<T extends AgentCallable>(
   marked = wrapped as AgentAccessibleFunction<T>;
   marked._raysurferAccessible = true;
   marked._raysurferSchema = {
-    name: options.name,
-    description: options.description,
-    parameters: options.parameters,
+    name: resolvedName,
+    description: resolvedDescription,
+    inputSchema: resolvedSchema,
+    parameters: resolvedSchema,
     source: fn.toString(),
   };
   return marked;
+}
+
+/**
+ * Convert an agent-accessible function to an Anthropic tool definition.
+ */
+export function toAnthropicTool(fn: AgentAccessibleFunction<AgentCallable>): {
+  name: string;
+  description: string;
+  input_schema: Record<string, JsonValue>;
+} {
+  const schema = fn._raysurferSchema;
+  return {
+    name: schema.name,
+    description: schema.description,
+    input_schema: schema.inputSchema,
+  };
 }
 
 /**

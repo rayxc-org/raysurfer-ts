@@ -51,7 +51,7 @@ for (const match of result.matches) {
 }
 
 // 2. Upload a new code file after execution
-await client.uploadNewCodeSnip({
+await client.upload({
   task,
   fileWritten: {
     path: "fetch_repos.ts",
@@ -162,7 +162,7 @@ Instead of relying on AI voting, provide your own votes:
 
 ```typescript
 // Single upload with your own vote (AI voting is skipped)
-await client.uploadNewCodeSnip({
+await client.upload({
   task: "Fetch GitHub trending repos",
   fileWritten: file,
   succeeded: true,
@@ -189,7 +189,7 @@ await client.uploadBulkCodeSnips(
 | `getFewShotExamples(task, k)` | Retrieve few-shot examples for code generation prompting |
 | `getTaskPatterns({ task, minThumbsUp?, topK? })` | Retrieve proven task-to-code mappings |
 | `storeCodeBlock({ name, source, entrypoint, language, description, tags?, dependencies?, ... })` | Store a code block with full metadata |
-| `uploadNewCodeSnip({ task, fileWritten, succeeded, useRaysurferAiVoting?, userVote?, executionLogs?, dependencies? })` | Store a single code file with optional dependency versions |
+| `upload({ task, fileWritten, succeeded, useRaysurferAiVoting?, userVote?, executionLogs?, dependencies? })` | Store a single code file with optional dependency versions |
 | `uploadBulkCodeSnips(prompts, filesWritten, logFiles?, useRaysurferAiVoting?, userVotes?)` | Bulk upload for grading (AI votes by default, or provide per-file votes) |
 | `voteCodeSnip({ task, codeBlockId, codeBlockName, codeBlockDescription, succeeded })` | Vote on snippet usefulness |
 
@@ -353,6 +353,42 @@ const client = new ClaudeSDKClient({ publicSnips: true });
 
 // Low-level
 const rs = new RaySurfer({ apiKey: "...", publicSnips: true });
+```
+
+## Agent-Accessible Functions
+
+Mark functions as callable by agents with `agentAccessible()`.
+Name and parameters are auto-inferred from the function when
+not provided:
+
+```typescript
+import { agentAccessible, toAnthropicTool } from "raysurfer";
+
+function fetchWeather(city: string, units: string) {
+  return { temp: 72, city, units };
+}
+
+// Auto-inferred: name="fetchWeather", parameters={city, units}
+const tool = agentAccessible(fetchWeather);
+
+// Or provide explicit metadata
+const toolExplicit = agentAccessible(fetchWeather, {
+  name: "get_weather",
+  description: "Fetch current weather for a city",
+  inputSchema: { city: "string", units: "string" },
+});
+```
+
+### Convert to Anthropic Tool
+
+Use `toAnthropicTool()` to get an Anthropic-compatible tool
+definition:
+
+```typescript
+const anthropicTool = toAnthropicTool(toolExplicit);
+// { name: "get_weather",
+//   description: "Fetch current weather for a city",
+//   input_schema: { city: "string", units: "string" } }
 ```
 
 ## Programmatic Tool Calling

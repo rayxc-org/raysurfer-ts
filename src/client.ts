@@ -458,7 +458,7 @@ export class RaySurfer {
    *
    * For uploading multiple files at once, use uploadBulkCodeSnips().
    */
-  async uploadNewCodeSnip(
+  async upload(
     taskOrOptions: string | UploadNewCodeSnipCompatOptions,
     fileWritten?: FileWritten,
     succeeded?: boolean,
@@ -521,7 +521,7 @@ export class RaySurfer {
       const responses: SubmitExecutionResultResponse[] = [];
       for (const compatFile of normalizedFiles) {
         responses.push(
-          await this.uploadNewCodeSnip({
+          await this.upload({
             ...opts,
             fileWritten: compatFile,
             filesWritten: undefined,
@@ -586,7 +586,10 @@ export class RaySurfer {
   }
 
   /** Backwards-compatible alias. */
-  uploadNewCodeSnips = this.uploadNewCodeSnip.bind(this);
+  uploadNewCodeSnip = this.upload.bind(this);
+
+  /** Backwards-compatible alias. */
+  uploadNewCodeSnips = this.upload.bind(this);
 
   /**
    * Bulk upload code files, prompts, and logs for sandboxed grading.
@@ -1313,10 +1316,7 @@ export class RaySurfer {
   }
 
   /** Execute a task with tool calling in a remote sandbox. */
-  async execute(
-    task: string,
-    options: ExecuteOptions,
-  ): Promise<ExecuteResult> {
+  async execute(task: string, options: ExecuteOptions): Promise<ExecuteResult> {
     const hasUserCode =
       typeof options?.userCode === "string" &&
       options.userCode.trim().length > 0;
@@ -1446,6 +1446,8 @@ export class RaySurfer {
       session_id: string;
       timeout_seconds: number;
       user_code?: string;
+      org_id?: string;
+      workspace_id?: string;
       codegen?: {
         provider: "anthropic";
         api_key: string;
@@ -1458,6 +1460,12 @@ export class RaySurfer {
       session_id: sessionId,
       timeout_seconds: timeout / 1000,
     };
+    if (this.organizationId) {
+      requestBody.org_id = this.organizationId;
+    }
+    if (this.workspaceId) {
+      requestBody.workspace_id = this.workspaceId;
+    }
     if (hasUserCode) {
       requestBody.user_code = options.userCode ?? "";
     } else {
@@ -1547,7 +1555,7 @@ export class RaySurfer {
     for (const fn of functions) {
       if (!fn._raysurferAccessible || !fn._raysurferSchema) continue;
       const schema = fn._raysurferSchema;
-      const response = await this.uploadNewCodeSnip({
+      const response = await this.upload({
         task: `Call ${schema.name}: ${schema.description}`,
         fileWritten: { path: `${schema.name}.ts`, content: schema.source },
         succeeded: true,
@@ -1572,8 +1580,8 @@ export class RaySurfer {
     fileWritten: FileWritten,
     succeeded: boolean,
   ): Promise<SubmitExecutionResultResponse> {
-    /** Alias for uploadNewCodeSnip for backwards compatibility. */
-    return this.uploadNewCodeSnip(task, fileWritten, succeeded);
+    /** Alias for upload for backwards compatibility. */
+    return this.upload(task, fileWritten, succeeded);
   }
 
   async retrieve(params: RetrieveParams): Promise<RetrieveCodeBlockResponse> {

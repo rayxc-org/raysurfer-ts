@@ -24,13 +24,8 @@ export {
   agentAccessible,
   publishFunctionRegistry,
   setTrackingClient,
+  toAnthropicTool,
 } from "./accessible";
-export type {
-  AgentAccessRules,
-  ModuleFunctionMap,
-  RaysurferConfig,
-} from "./config";
-export { loadConfig } from "./config";
 export type {
   CodegenAppOptions,
   CodegenRunGeneratedCodeOptions,
@@ -48,6 +43,12 @@ export type {
 } from "./client";
 // Direct API client (for advanced use cases)
 export { default as RaySurferDefault, RaySurfer, VERSION } from "./client";
+export type {
+  AgentAccessRules,
+  ModuleFunctionMap,
+  RaysurferConfig,
+} from "./config";
+export { loadConfig } from "./config";
 // Errors
 export {
   APIError,
@@ -110,6 +111,7 @@ export type {
   ToolDefinition,
   UploadBulkCodeSnipsOptions,
   UploadNewCodeSnipOptions,
+  UploadNewCodeSnipOptions as UploadOptions,
   VoteCodeSnipParams,
   VoteCodeSnipResponse,
 } from "./types";

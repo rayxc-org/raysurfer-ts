@@ -70,15 +70,12 @@ const client = new RaySurfer({ apiKey: "rs_..." });
 const result = await client.search({ task: "Fetch GitHub user data" });
 
 // Upload: store a code file + logs + query (voting triggered by default)
-await client.uploadNewCodeSnip(
-  "Fetch GitHub user data",
-  { path: "fetcher.ts", content: "function fetch() { ... }" },
-  true,      // succeeded
-  undefined, // cachedCodeBlocks
-  true,      // useRaysurferAiVoting
-  undefined, // userVote
-  "Fetched user data successfully", // executionLogs
-);
+await client.upload({
+  task: "Fetch GitHub user data",
+  fileWritten: { path: "fetcher.ts", content: "function fetch() { ... }" },
+  succeeded: true,
+  executionLogs: "Fetched user data successfully",
+});
 ```
 
 ## Package Managers

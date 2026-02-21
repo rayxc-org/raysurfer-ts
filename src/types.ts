@@ -335,7 +335,7 @@ export interface RetrieveExecutionsResponse {
 // Options interfaces for kwargs-style API calls
 // ============================================================================
 
-/** Options for uploadNewCodeSnip (kwargs-style) */
+/** Options for upload / uploadNewCodeSnip (kwargs-style) */
 export interface UploadNewCodeSnipOptions {
   task: string;
   fileWritten?: FileWritten;
