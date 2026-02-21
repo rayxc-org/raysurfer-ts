@@ -3,9 +3,8 @@
  */
 
 import { readFileSync } from "node:fs";
-
-import { agentAccessible } from "./accessible";
 import type { AgentAccessibleFunction, AgentCallable } from "./accessible";
+import { agentAccessible } from "./accessible";
 import type { JsonValue } from "./types";
 
 export interface AgentAccessRules {
@@ -20,10 +19,7 @@ export interface RaysurferConfig {
 
 type ConfigFunction = AgentCallable;
 
-export type ModuleFunctionMap = Record<
-  string,
-  Record<string, ConfigFunction>
->;
+export type ModuleFunctionMap = Record<string, Record<string, ConfigFunction>>;
 
 function coerceStringList(value: string[] | string | undefined): string[] {
   if (value === undefined || value === null) return [];
@@ -153,7 +149,10 @@ function inferParameters(fn: ConfigFunction): Record<string, JsonValue> {
   const params: Record<string, JsonValue> = {};
   for (const chunk of rawParams.split(",")) {
     const candidate = (
-      chunk.trim().replace(/^\.\.\./, "").split("=")[0] ?? ""
+      chunk
+        .trim()
+        .replace(/^\.\.\./, "")
+        .split("=")[0] ?? ""
     ).trim();
     if (!candidate) continue;
     params[candidate] = "string";

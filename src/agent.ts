@@ -1,9 +1,5 @@
 import RaySurfer, { type RaySurferOptions } from "./client";
-import type {
-  ExecuteResult,
-  ToolCallback,
-  ToolDefinition,
-} from "./types";
+import type { ExecuteResult, ToolCallback, ToolDefinition } from "./types";
 
 const DEFAULT_CODEGEN_MODEL = "claude-opus-4-6";
 const DEFAULT_EXECUTION_TIMEOUT_MS = 300000;
@@ -79,11 +75,18 @@ export class CodegenApp {
     return this;
   }
 
-  async run(task: string, options: CodegenRunOptions = {}): Promise<ExecuteResult> {
+  async run(
+    task: string,
+    options: CodegenRunOptions = {},
+  ): Promise<ExecuteResult> {
     const codegenApiKey = this.resolveCodegenApiKey(options.codegenApiKey);
-    const codegenPrompt = this.resolveCodegenPrompt(task, options.codegenPrompt);
+    const codegenPrompt = this.resolveCodegenPrompt(
+      task,
+      options.codegenPrompt,
+    );
     const codegenModel = options.codegenModel ?? this._defaultCodegenModel;
-    const timeout = options.executionTimeoutMs ?? this._defaultExecutionTimeoutMs;
+    const timeout =
+      options.executionTimeoutMs ?? this._defaultExecutionTimeoutMs;
     return this._raysurfer.executeWithSandboxCodegen(
       task,
       {
@@ -101,7 +104,8 @@ export class CodegenApp {
     userCode: string,
     options: CodegenRunGeneratedCodeOptions = {},
   ): Promise<ExecuteResult> {
-    const timeout = options.executionTimeoutMs ?? this._defaultExecutionTimeoutMs;
+    const timeout =
+      options.executionTimeoutMs ?? this._defaultExecutionTimeoutMs;
     return this._raysurfer.executeGeneratedCode(task, userCode, { timeout });
   }
 
