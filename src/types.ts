@@ -176,6 +176,13 @@ export interface RetrieveBestResponse {
   retrievalConfidence: string;
 }
 
+/** Response from deleting a snippet */
+export interface DeleteResponse {
+  success: boolean;
+  deletedCount: number;
+  message: string;
+}
+
 export interface SubmitExecutionResultRequest {
   task: string;
   fileWritten: FileWritten;

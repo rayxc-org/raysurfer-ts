@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "0.11.0";
+export const VERSION = "1.2.0";
 
 import type {
   AgentReview,
@@ -23,6 +23,7 @@ import type {
   BulkExecutionResultResponse,
   CodeBlock,
   CodeFile,
+  DeleteResponse,
   ExecuteOptions,
   ExecuteResult,
   ExecutionState,
@@ -590,6 +591,31 @@ export class RaySurfer {
 
   /** Backwards-compatible alias. */
   uploadNewCodeSnips = this.upload.bind(this);
+
+  /**
+   * Delete a snippet and all its associated data.
+   */
+  async delete(
+    snippetId: string,
+    options?: { workspaceId?: string },
+  ): Promise<DeleteResponse> {
+    const result = await this.request<{
+      success: boolean;
+      deleted_count: number;
+      message: string;
+    }>(
+      "POST",
+      "/api/snippets/delete",
+      { snippet_id: snippetId },
+      this.workspaceHeaders(options?.workspaceId),
+    );
+
+    return {
+      success: result.success,
+      deletedCount: result.deleted_count,
+      message: result.message,
+    };
+  }
 
   /**
    * Bulk upload code files, prompts, and logs for sandboxed grading.
