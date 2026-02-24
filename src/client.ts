@@ -594,6 +594,7 @@ export class RaySurfer {
 
   /**
    * Delete a snippet and all its associated data.
+   * @param snippetId - The ID or name of the snippet to delete.
    */
   async delete(
     snippetId: string,

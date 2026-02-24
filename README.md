@@ -191,7 +191,7 @@ await client.uploadBulkCodeSnips(
 | `storeCodeBlock({ name, source, entrypoint, language, description, tags?, dependencies?, ... })` | Store a code block with full metadata |
 | `upload({ task, fileWritten, succeeded, useRaysurferAiVoting?, userVote?, executionLogs?, dependencies? })` | Store a single code file with optional dependency versions |
 | `uploadBulkCodeSnips(prompts, filesWritten, logFiles?, useRaysurferAiVoting?, userVotes?)` | Bulk upload for grading (AI votes by default, or provide per-file votes) |
-| `delete(snippetId)` | Delete a snippet and all its associated data |
+| `delete(snippetId)` | Delete a snippet by ID or name |
 | `voteCodeSnip({ task, codeBlockId, codeBlockName, codeBlockDescription, succeeded })` | Vote on snippet usefulness |
 
 ### Exceptions
