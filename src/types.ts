@@ -252,6 +252,19 @@ export interface GetCodeFilesResponse {
   addToLlmPrompt: string;
 }
 
+/** Per-function reputation data tracked independently of snippet-level metrics */
+export interface FunctionReputation {
+  fingerprint: string;
+  functionName: string;
+  signature: string;
+  executionCount: number;
+  thumbsUp: number;
+  thumbsDown: number;
+  lastSuccessAt?: string | null;
+  lastFailureAt?: string | null;
+  commonErrors: string[];
+}
+
 /** A search match with scoring */
 export interface SearchMatch {
   codeBlock: CodeBlock;
@@ -271,6 +284,7 @@ export interface SearchMatch {
   dependencies: Record<string, string>;
   comments: Record<string, JsonValue>[];
   agentId?: string | null;
+  functions?: FunctionReputation[] | null;
 }
 
 /** Response from unified search endpoint */

@@ -207,6 +207,8 @@ export interface SearchParams {
   minHumanUpvotes?: number;
   preferComplete?: boolean;
   inputSchema?: Record<string, JsonValue>;
+  /** Include per-function reputation metadata injected into source */
+  includeFunctionReputation?: boolean;
   /** Override client-level workspaceId for this request */
   workspaceId?: string;
 }
@@ -755,7 +757,10 @@ export class RaySurfer {
 
   async search(params: SearchParams): Promise<SearchResponse> {
     /** Unified search across all cached code using POST /api/retrieve/search. */
-    const data = {
+    const data: Record<
+      string,
+      string | number | boolean | null | undefined | object
+    > = {
       task: params.task,
       top_k: params.topK ?? 5,
       min_verdict_score: params.minVerdictScore ?? 0.3,
@@ -763,6 +768,9 @@ export class RaySurfer {
       prefer_complete: params.preferComplete ?? false,
       input_schema: params.inputSchema ?? null,
     };
+    if (params.includeFunctionReputation) {
+      data.include_function_reputation = true;
+    }
 
     const result = await this.request<{
       matches: Array<{
@@ -778,6 +786,17 @@ export class RaySurfer {
         dependencies: string[] | Record<string, string>;
         agent_id?: string | null;
         comments?: Record<string, JsonValue>[];
+        functions?: Array<{
+          fingerprint: string;
+          function_name: string;
+          signature: string;
+          execution_count: number;
+          thumbs_up: number;
+          thumbs_down: number;
+          last_success_at?: string | null;
+          last_failure_at?: string | null;
+          common_errors: string[];
+        }> | null;
       }>;
       total_found: number;
       cache_hit: boolean;
@@ -792,6 +811,19 @@ export class RaySurfer {
       matches: result.matches.map((m) => {
         const vectorScore = m.vector_score ?? m.score;
         const verdictScore = m.verdict_score ?? m.score;
+        const functions = m.functions
+          ? m.functions.map((f) => ({
+              fingerprint: f.fingerprint,
+              functionName: f.function_name,
+              signature: f.signature,
+              executionCount: f.execution_count,
+              thumbsUp: f.thumbs_up,
+              thumbsDown: f.thumbs_down,
+              lastSuccessAt: f.last_success_at ?? null,
+              lastFailureAt: f.last_failure_at ?? null,
+              commonErrors: f.common_errors,
+            }))
+          : null;
         return {
           codeBlock: this.parseCodeBlock(m.code_block),
           score: m.score,
@@ -806,6 +838,7 @@ export class RaySurfer {
           dependencies: normalizeDependencies(m.dependencies),
           agentId: m.agent_id ?? null,
           comments: m.comments ?? [],
+          functions,
         };
       }),
       totalFound: result.total_found,

@@ -90,6 +90,7 @@ export type {
   ExecutionRecord,
   FewShotExample,
   FileWritten,
+  FunctionReputation,
   GetCodeFilesResponse,
   JsonValue,
   LogFile,
