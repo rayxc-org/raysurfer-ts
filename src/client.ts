@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.2.1";
 
 import type {
   AgentReview,
