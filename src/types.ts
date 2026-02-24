@@ -383,6 +383,8 @@ export interface UploadNewCodeSnipOptions {
   agentId?: string;
   /** Optional tags to persist on this snippet (e.g., function_registry) */
   tags?: string[];
+  /** Opt-in: extract per-function reputation tracking via AST parsing */
+  perFunctionReputation?: boolean;
 }
 
 // ============================================================================
@@ -507,4 +509,6 @@ export interface UploadBulkCodeSnipsOptions {
   useRaysurferAiVoting?: boolean;
   userVotes?: Record<string, number>;
   workspaceId?: string;
+  /** Opt-in: extract per-function reputation tracking via AST parsing */
+  perFunctionReputation?: boolean;
 }

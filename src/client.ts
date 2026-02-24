@@ -168,6 +168,7 @@ interface UploadNewCodeSnipCompatOptions {
   public?: boolean;
   voteSource?: "ai" | "human";
   voteCount?: number;
+  perFunctionReputation?: boolean;
 }
 
 interface FunctionRegistrySchema {
@@ -208,7 +209,7 @@ export interface SearchParams {
   preferComplete?: boolean;
   inputSchema?: Record<string, JsonValue>;
   /** Include per-function reputation metadata injected into source */
-  includeFunctionReputation?: boolean;
+  perFunctionReputation?: boolean;
   /** Override client-level workspaceId for this request */
   workspaceId?: string;
 }
@@ -566,6 +567,7 @@ export class RaySurfer {
       public: opts.public || undefined,
       vote_source: opts.voteSource,
       vote_count: opts.voteCount,
+      per_function_reputation: opts.perFunctionReputation || undefined,
     };
 
     const result = await this.request<{
@@ -727,6 +729,10 @@ export class RaySurfer {
       user_votes: opts.userVotes,
       vote_source: opts.voteSource,
       vote_count: opts.voteCount,
+      per_function_reputation:
+        "perFunctionReputation" in opts && opts.perFunctionReputation
+          ? true
+          : undefined,
     };
 
     const result = await this.request<{
@@ -768,8 +774,8 @@ export class RaySurfer {
       prefer_complete: params.preferComplete ?? false,
       input_schema: params.inputSchema ?? null,
     };
-    if (params.includeFunctionReputation) {
-      data.include_function_reputation = true;
+    if (params.perFunctionReputation) {
+      data.per_function_reputation = true;
     }
 
     const result = await this.request<{
