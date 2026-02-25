@@ -263,6 +263,13 @@ export interface FunctionReputation {
   lastSuccessAt?: string | null;
   lastFailureAt?: string | null;
   commonErrors: string[];
+  avgOutputSize: number;
+  outputCompleteness: number;
+  repeatCallRate: number;
+  totalLoggedCalls: number;
+  authorAgent?: string | null;
+  reviewedByHuman: boolean;
+  derivedFrom?: string | null;
 }
 
 /** A search match with scoring */

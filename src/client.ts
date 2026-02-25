@@ -802,6 +802,13 @@ export class RaySurfer {
           last_success_at?: string | null;
           last_failure_at?: string | null;
           common_errors: string[];
+          avg_output_size: number;
+          output_completeness: number;
+          repeat_call_rate: number;
+          total_logged_calls: number;
+          author_agent?: string | null;
+          reviewed_by_human: boolean;
+          derived_from?: string | null;
         }> | null;
       }>;
       total_found: number;
@@ -828,6 +835,13 @@ export class RaySurfer {
               lastSuccessAt: f.last_success_at ?? null,
               lastFailureAt: f.last_failure_at ?? null,
               commonErrors: f.common_errors,
+              avgOutputSize: f.avg_output_size,
+              outputCompleteness: f.output_completeness,
+              repeatCallRate: f.repeat_call_rate,
+              totalLoggedCalls: f.total_logged_calls,
+              authorAgent: f.author_agent ?? null,
+              reviewedByHuman: f.reviewed_by_human,
+              derivedFrom: f.derived_from ?? null,
             }))
           : null;
         return {

@@ -58,6 +58,11 @@ export {
   RaySurferError,
   ValidationError,
 } from "./errors";
+export {
+  getTelemetryJson,
+  raysurferLogging,
+  resetTelemetry,
+} from "./logging";
 export type {
   QueryOptions,
   QueryParams,
