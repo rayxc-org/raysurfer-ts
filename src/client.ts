@@ -189,6 +189,8 @@ export interface GetCodeFilesParams {
   topK?: number;
   minVerdictScore?: number;
   preferComplete?: boolean;
+  /** Include per-function reputation comments/metadata in retrieved source (default true). */
+  perFunctionReputation?: boolean;
   /** Directory path where files will be written (default: .raysurfer_code). Used to generate full paths in addToLlmPrompt. */
   cacheDir?: string;
 }
@@ -651,6 +653,7 @@ export class RaySurfer {
           workspaceId?: string;
           voteSource?: "ai" | "human";
           voteCount?: number;
+          perFunctionReputation?: boolean;
         },
     filesWritten?: FileWritten[],
     logFiles?: Array<
@@ -985,12 +988,14 @@ export class RaySurfer {
     /**
      * Get code files for a task, ready to download to sandbox.
      * Delegates to unified search() and maps results to CodeFile format.
+     * Per-function reputation is enabled by default for this convenience API.
      */
     const response = await this.search({
       task: params.task,
       topK: params.topK ?? 5,
       minVerdictScore: params.minVerdictScore ?? 0.3,
       preferComplete: params.preferComplete ?? true,
+      perFunctionReputation: params.perFunctionReputation ?? true,
     });
     const files: CodeFile[] = response.matches.map((m) => ({
       codeBlockId: m.codeBlock.id,

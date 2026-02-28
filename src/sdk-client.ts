@@ -35,6 +35,14 @@ const DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com";
 const CACHE_DIR = ".raysurfer_code";
 const DEFAULT_RUN_PARSE_SAMPLE_RATE = 1;
 const RUN_PARSE_SAMPLE_RATE_ENV_VAR = "RAYSURFER_RUN_PARSE_SAMPLE_RATE";
+const DEFAULT_AGENT_COMPAT_TOOLS_PRESET = {
+  type: "preset" as const,
+  preset: "claude_code" as const,
+};
+const DEFAULT_SANDBOX_SETTINGS = {
+  enabled: true,
+  autoAllowBashIfSandboxed: true,
+};
 
 function resolveRunParseSampleRate(configured?: number): number {
   if (configured !== undefined) {
@@ -232,6 +240,29 @@ function splitOptions(options: RaysurferQueryOptions): {
   };
 }
 
+/** Apply default compatibility tools + sandbox config when callers omit them. */
+function applyDefaultAgentCompatibilityOptions(options: Options): Options {
+  const merged = { ...options };
+  const hasToolsPreset = merged.tools !== undefined && merged.tools !== null;
+  const hasAllowedTools =
+    Array.isArray(merged.allowedTools) && merged.allowedTools.length > 0;
+
+  if (!hasToolsPreset && !hasAllowedTools) {
+    merged.tools = DEFAULT_AGENT_COMPAT_TOOLS_PRESET;
+  }
+
+  if (merged.sandbox && typeof merged.sandbox === "object") {
+    merged.sandbox = {
+      ...DEFAULT_SANDBOX_SETTINGS,
+      ...merged.sandbox,
+    };
+  } else {
+    merged.sandbox = { ...DEFAULT_SANDBOX_SETTINGS };
+  }
+
+  return merged;
+}
+
 /**
  * RaysurferQuery wraps the Claude SDK Query with cache lookup and upload.
  * Implements the Query interface (extends AsyncGenerator<SDKMessage, void>).
@@ -269,7 +300,7 @@ class RaysurferQuery {
     this._params = params;
     const options = params.options ?? {};
     const { sdkOptions, extras } = splitOptions(options);
-    this._sdkOptions = sdkOptions;
+    this._sdkOptions = applyDefaultAgentCompatibilityOptions(sdkOptions);
     this._extras = extras;
 
     // Determine if prompt is a string (cacheable) or stream (not cacheable)
@@ -334,6 +365,7 @@ class RaysurferQuery {
           topK: 5,
           minVerdictScore: 0.3,
           preferComplete: true,
+          perFunctionReputation: true,
           cacheDir,
         });
         this._debug.timeEnd("Cache lookup");
@@ -656,17 +688,18 @@ class RaysurferQuery {
           // Upload each file individually (single-file endpoint)
           // Pass cachedCodeBlocks only on the first call to trigger voting once
           for (const [i, file] of filesToCache.entries()) {
-            await this._raysurfer.uploadNewCodeSnip(
-              this._promptText,
-              file,
-              true,
-              i === 0 && cachedBlocksForVoting.length > 0
-                ? cachedBlocksForVoting
-                : undefined,
-              this._parseRunForAiVoting,
-              undefined, // userVote
-              joinedLogs,
-            );
+            await this._raysurfer.uploadNewCodeSnip({
+              task: this._promptText,
+              fileWritten: file,
+              succeeded: true,
+              cachedCodeBlocks:
+                i === 0 && cachedBlocksForVoting.length > 0
+                  ? cachedBlocksForVoting
+                  : undefined,
+              useRaysurferAiVoting: this._parseRunForAiVoting,
+              executionLogs: joinedLogs,
+              perFunctionReputation: true,
+            });
           }
           // If no files to upload but there are cached blocks to vote on,
           // still trigger voting via a dummy upload

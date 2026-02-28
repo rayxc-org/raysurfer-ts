@@ -49,6 +49,11 @@ export function raysurferLogging(value: unknown): void {
   }
 }
 
+/** Drop-in alias for raysurferLogging(). */
+export function log(value: unknown): void {
+  raysurferLogging(value);
+}
+
 /** Return accumulated telemetry as a JSON string. */
 export function getTelemetryJson(): string {
   return JSON.stringify(_buildPayload());

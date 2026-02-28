@@ -60,9 +60,17 @@ export {
 } from "./errors";
 export {
   getTelemetryJson,
+  log,
   raysurferLogging,
   resetTelemetry,
 } from "./logging";
+export type {
+  ProgrammaticMaterializeContext,
+  ProgrammaticPrepareTurnOptions,
+  ProgrammaticToolCallingSessionOptions,
+  ProgrammaticUploadOptions,
+} from "./programmatic";
+export { ProgrammaticToolCallingSession } from "./programmatic";
 export type {
   QueryOptions,
   QueryParams,
