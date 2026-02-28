@@ -9,7 +9,7 @@ import {
   RateLimitError,
 } from "./errors";
 
-export const VERSION = "1.2.1";
+export const VERSION = "1.4.0";
 
 import type {
   AgentReview,
@@ -36,6 +36,8 @@ import type {
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
+  SearchLogsParams,
+  SearchLogsResponse,
   SearchPublicParams,
   SearchPublicResponse,
   SearchResponse,
@@ -1212,6 +1214,52 @@ export class RaySurfer {
           : null,
       })),
       totalFound: response.total_found,
+    };
+  }
+
+  /**
+   * Search raw execution logs and return snippet markdown links for investigation.
+   */
+  async searchLogs(params: SearchLogsParams): Promise<SearchLogsResponse> {
+    const response = await this.request<{
+      matches: Array<{
+        snippet_id: string;
+        name: string;
+        filename: string | null;
+        language: string;
+        created_at: string;
+        triggering_query: string | null;
+        score: number;
+        preview: string;
+        raw_markdown_url: string;
+        log_url: string | null;
+      }>;
+      total_found: number;
+      has_more: boolean;
+    }>("POST", "/api/raw/search", {
+      query: params.query,
+      limit: params.limit ?? 20,
+      offset: params.offset ?? 0,
+      code_block_id: params.codeBlockId ?? undefined,
+      language: params.language ?? undefined,
+      days_back: params.daysBack ?? undefined,
+    });
+
+    return {
+      matches: response.matches.map((match) => ({
+        snippetId: match.snippet_id,
+        name: match.name,
+        filename: match.filename,
+        language: match.language,
+        createdAt: match.created_at,
+        triggeringQuery: match.triggering_query,
+        score: match.score,
+        preview: match.preview,
+        rawMarkdownUrl: match.raw_markdown_url,
+        logUrl: match.log_url,
+      })),
+      totalFound: response.total_found,
+      hasMore: response.has_more,
     };
   }
 

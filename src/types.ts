@@ -359,6 +359,37 @@ export interface RetrieveExecutionsResponse {
   totalFound: number;
 }
 
+/** Request params for raw log search. */
+export interface SearchLogsParams {
+  query: string;
+  limit?: number;
+  offset?: number;
+  codeBlockId?: string | null;
+  language?: string | null;
+  daysBack?: number | null;
+}
+
+/** A raw log match with snippet metadata and direct markdown link. */
+export interface LogSearchMatch {
+  snippetId: string;
+  name: string;
+  filename?: string | null;
+  language: string;
+  createdAt: string;
+  triggeringQuery?: string | null;
+  score: number;
+  preview: string;
+  rawMarkdownUrl: string;
+  logUrl?: string | null;
+}
+
+/** Response from searching raw execution logs. */
+export interface SearchLogsResponse {
+  matches: LogSearchMatch[];
+  totalFound: number;
+  hasMore: boolean;
+}
+
 // ============================================================================
 // Options interfaces for kwargs-style API calls
 // ============================================================================
