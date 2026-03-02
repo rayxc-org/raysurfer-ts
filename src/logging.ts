@@ -1,5 +1,5 @@
 /**
- * Per-function telemetry via raysurferLogging() — agents call this
+ * Per-function telemetry via raysurfer.log() — agents call this
  * inside cached functions.
  */
 
@@ -21,7 +21,7 @@ const telemetry = new Map<string, FunctionTelemetry>();
  * Accumulates metrics (type, size, emptiness) per function in
  * memory, flushed automatically on process exit.
  */
-export function raysurferLogging(value: unknown): void {
+export function log(value: unknown): void {
   const funcName = _getCallerName();
 
   const valueType = _getTypeName(value);
@@ -49,9 +49,9 @@ export function raysurferLogging(value: unknown): void {
   }
 }
 
-/** Drop-in alias for raysurferLogging(). */
-export function log(value: unknown): void {
-  raysurferLogging(value);
+/** Backwards-compatible alias — use `log()` instead. */
+export function raysurferLogging(value: unknown): void {
+  log(value);
 }
 
 /** Return accumulated telemetry as a JSON string. */
@@ -67,9 +67,9 @@ export function resetTelemetry(): void {
 function _getCallerName(): string {
   const err = new Error();
   const stack = err.stack ?? "";
-  // Stack format: "Error\n    at raysurferLogging (...)\n    at callerName (...)\n..."
+  // Stack format: "Error\n    at log (...)\n    at callerName (...)\n..."
   const lines = stack.split("\n");
-  // lines[0] = "Error", lines[1] = raysurferLogging, lines[2] = actual caller
+  // lines[0] = "Error", lines[1] = log, lines[2] = actual caller
   const callerLine = lines[2];
   if (callerLine) {
     const trimmed = callerLine.trim();
