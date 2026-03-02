@@ -76,6 +76,7 @@ export type {
   QueryParams,
   RaysurferAgentOptions,
   RaysurferExtras,
+  RaysurferOpencodeOptions,
   RaysurferQueryOptions,
 } from "./sdk-client";
 // Drop-in replacement for Claude Agent SDK (primary exports)
@@ -84,6 +85,7 @@ export {
   default as queryDefault,
   query,
   RaysurferClient,
+  RaysurferOpencodeClient,
 } from "./sdk-client";
 export type {
   AgentReview,
@@ -119,6 +121,9 @@ export type {
   SearchPublicParams,
   SearchPublicResponse,
   SearchResponse,
+  SharedCodeParams,
+  SharedCodeResponse,
+  SharedCodeSecurityReport,
   StoreCodeBlockResponse,
   StoreExecutionResponse,
   SubmitExecutionResultRequest,

@@ -871,7 +871,13 @@ export class ClaudeSDKClient {
 }
 
 // Backwards compatibility aliases
-export { ClaudeSDKClient as RaysurferClient };
-export type { RaysurferQueryOptions as RaysurferAgentOptions };
+export {
+  ClaudeSDKClient as RaysurferClient,
+  ClaudeSDKClient as RaysurferOpencodeClient,
+};
+export type {
+  RaysurferQueryOptions as RaysurferAgentOptions,
+  RaysurferQueryOptions as RaysurferOpencodeOptions,
+};
 
 export default query;
