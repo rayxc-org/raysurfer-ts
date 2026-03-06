@@ -127,6 +127,12 @@ export interface TaskPattern {
   lastThumbsDown?: string | null;
 }
 
+/** A single file within a repository upload */
+export interface RepoFile {
+  path: string;
+  content: string;
+}
+
 /** A file written during agent execution */
 export interface FileWritten {
   path: string;
@@ -292,6 +298,18 @@ export interface SearchMatch {
   comments: Record<string, JsonValue>[];
   agentId?: string | null;
   functions?: FunctionReputation[] | null;
+  /** Discriminator: "file" for code snippets, "repo" for repo scaffolds */
+  type: "file" | "repo";
+  /** Presigned S3 URL for downloading repo archive (repo matches only) */
+  downloadUrl?: string | null;
+  /** Newline-separated file paths (repo matches only) */
+  fileTree?: string | null;
+  /** Number of files in the repo (repo matches only) */
+  fileCount?: number | null;
+  /** Primary framework (repo matches only) */
+  framework?: string | null;
+  /** First 500 chars of README (repo matches only) */
+  readmePreview?: string | null;
 }
 
 /** Response from unified search endpoint */
@@ -299,6 +317,43 @@ export interface SearchResponse {
   matches: SearchMatch[];
   totalFound: number;
   cacheHit: boolean;
+}
+
+/** Request params for shared code retrieval with generation fallback. */
+export interface SharedCodeParams {
+  task: string;
+  providerApiKey: string;
+  provider?: "anthropic" | "openai";
+  model?: string;
+  similarityThreshold?: number;
+  topK?: number;
+  language?: string;
+  autoUploadPublic?: boolean;
+  failOnSecrets?: boolean;
+  failOnMalicious?: boolean;
+}
+
+/** Security report for shared code response. */
+export interface SharedCodeSecurityReport {
+  containsSecrets: boolean;
+  secretLabels: string[];
+  malicious: boolean;
+  maliciousReasons: string[];
+  openrouterChecked: boolean;
+  openrouterSummary?: string | null;
+}
+
+/** Response payload for shared code endpoint. */
+export interface SharedCodeResponse {
+  code: string;
+  source: "cache" | "generated";
+  cacheHit: boolean;
+  similarityScore?: number | null;
+  matchedCodeBlockId?: string | null;
+  generatedWithProvider?: "anthropic" | "openai" | null;
+  modelUsed?: string | null;
+  uploadedCodeBlockId?: string | null;
+  security: SharedCodeSecurityReport;
 }
 
 /** Request to vote on a code snippet */
@@ -423,6 +478,10 @@ export interface UploadNewCodeSnipOptions {
   tags?: string[];
   /** Opt-in: extract per-function reputation tracking via AST parsing */
   perFunctionReputation?: boolean;
+  /** Local directory path to upload as a repo scaffold */
+  repoPath?: string;
+  /** GitHub repo URL to import as a repo scaffold */
+  githubUrl?: string;
 }
 
 // ============================================================================
@@ -455,6 +514,25 @@ export interface SearchPublicResponse {
   snippets: PublicSnippet[];
   total: number;
   query: string;
+}
+
+/** Response from an agent chat turn with auto-persistent workspace */
+export interface ChatResponse {
+  success: boolean;
+  output: string;
+  error: string;
+  sessionId: string | null;
+  durationMs: number;
+  changedFiles: string[];
+  workspaceFiles: string[];
+}
+
+/** Options for agent chat */
+export interface ChatOptions {
+  user: string;
+  org: string;
+  model?: string;
+  maxTurns?: number;
 }
 
 /** Params for browsing public snippets */

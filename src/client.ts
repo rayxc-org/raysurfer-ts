@@ -21,6 +21,8 @@ import type {
   BrowsePublicParams,
   BrowsePublicResponse,
   BulkExecutionResultResponse,
+  ChatOptions,
+  ChatResponse,
   CodeBlock,
   CodeFile,
   DeleteResponse,
@@ -41,6 +43,8 @@ import type {
   SearchPublicParams,
   SearchPublicResponse,
   SearchResponse,
+  SharedCodeParams,
+  SharedCodeResponse,
   SnipsDesired,
   StoreCodeBlockResponse,
   StoreExecutionResponse,
@@ -170,6 +174,8 @@ interface UploadNewCodeSnipCompatOptions {
   public?: boolean;
   voteSource?: "ai" | "human";
   voteCount?: number;
+  repoPath?: string;
+  githubUrl?: string;
   perFunctionReputation?: boolean;
 }
 
@@ -216,6 +222,8 @@ export interface SearchParams {
   perFunctionReputation?: boolean;
   /** Override client-level workspaceId for this request */
   workspaceId?: string;
+  /** Filter results by type: "any" (default), "file", or "repo" */
+  resultType?: "any" | "file" | "repo";
 }
 
 /**
@@ -506,6 +514,11 @@ export class RaySurfer {
       };
     }
 
+    // Repo upload path: if repoPath or githubUrl is provided, upload as a repo
+    if (opts.repoPath || opts.githubUrl) {
+      return this.uploadRepo(opts);
+    }
+
     if (opts.fileWritten && opts.filesWritten) {
       throw new Error("Provide either fileWritten or filesWritten, not both.");
     }
@@ -521,7 +534,7 @@ export class RaySurfer {
 
     if (normalizedFiles.length === 0) {
       throw new Error(
-        "Missing required file input: provide fileWritten or filesWritten.",
+        "Missing required file input: provide fileWritten, filesWritten, repoPath, or githubUrl.",
       );
     }
 
@@ -591,6 +604,84 @@ export class RaySurfer {
       codeBlocksStored: result.code_blocks_stored,
       message: result.message,
       snippetName: result.snippet_name ?? null,
+    };
+  }
+
+  /** Upload a local directory or GitHub URL as a repo scaffold. */
+  private async uploadRepo(
+    opts: UploadNewCodeSnipCompatOptions,
+  ): Promise<SubmitExecutionResultResponse> {
+    const files: Array<{ path: string; content: string }> = [];
+
+    if (opts.repoPath) {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const skipDirs = new Set([
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".tox",
+        "dist",
+        "build",
+      ]);
+
+      const walkDir = (dir: string, base: string): void => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (skipDirs.has(entry.name)) continue;
+          const fullPath = path.join(dir, entry.name);
+          const relPath = path.join(base, entry.name);
+          if (entry.isDirectory()) {
+            walkDir(fullPath, relPath);
+          } else if (entry.isFile()) {
+            try {
+              const content = fs.readFileSync(fullPath, "utf-8");
+              files.push({ path: relPath, content });
+            } catch {
+              // Skip binary/unreadable files
+            }
+          }
+        }
+      };
+
+      walkDir(opts.repoPath, "");
+    }
+
+    const requestData: Record<
+      string,
+      string | number | boolean | null | undefined | object
+    > = {
+      task: opts.task,
+      files,
+    };
+    if (opts.githubUrl) {
+      requestData.github_url = opts.githubUrl;
+    }
+    if (opts.dependencies) {
+      requestData.dependencies = opts.dependencies;
+    }
+    if (opts.tags) {
+      requestData.tags = opts.tags;
+    }
+
+    const result = await this.request<{
+      success: boolean;
+      repo_id: string;
+      message: string;
+    }>(
+      "POST",
+      "/api/store/repo",
+      requestData,
+      this.workspaceHeaders(opts.workspaceId),
+    );
+
+    return {
+      success: result.success,
+      codeBlocksStored: result.success ? 1 : 0,
+      message: result.message,
+      snippetName: result.repo_id ?? null,
     };
   }
 
@@ -782,6 +873,9 @@ export class RaySurfer {
     if (params.perFunctionReputation) {
       data.per_function_reputation = true;
     }
+    if (params.resultType && params.resultType !== "any") {
+      data.result_type = params.resultType;
+    }
 
     const result = await this.request<{
       matches: Array<{
@@ -815,6 +909,12 @@ export class RaySurfer {
           reviewed_by_human: boolean;
           derived_from?: string | null;
         }> | null;
+        type?: "file" | "repo";
+        download_url?: string | null;
+        file_tree?: string | null;
+        file_count?: number | null;
+        framework?: string | null;
+        readme_preview?: string | null;
       }>;
       total_found: number;
       cache_hit: boolean;
@@ -864,10 +964,70 @@ export class RaySurfer {
           agentId: m.agent_id ?? null,
           comments: m.comments ?? [],
           functions,
+          type: m.type ?? "file",
+          downloadUrl: m.download_url ?? null,
+          fileTree: m.file_tree ?? null,
+          fileCount: m.file_count ?? null,
+          framework: m.framework ?? null,
+          readmePreview: m.readme_preview ?? null,
         };
       }),
       totalFound: result.total_found,
       cacheHit: result.cache_hit,
+    };
+  }
+
+  /** Retrieve highly similar public code or generate+upload when no strong match exists. */
+  async sharedCode(params: SharedCodeParams): Promise<SharedCodeResponse> {
+    const data = {
+      task: params.task,
+      provider_api_key: params.providerApiKey,
+      provider: params.provider,
+      model: params.model,
+      similarity_threshold: params.similarityThreshold ?? 0.86,
+      top_k: params.topK ?? 1,
+      language: params.language ?? "python",
+      auto_upload_public: params.autoUploadPublic ?? true,
+      fail_on_secrets: params.failOnSecrets ?? true,
+      fail_on_malicious: params.failOnMalicious ?? true,
+    };
+
+    const result = await this.request<{
+      code: string;
+      source: "cache" | "generated";
+      cache_hit: boolean;
+      similarity_score?: number | null;
+      matched_code_block_id?: string | null;
+      generated_with_provider?: "anthropic" | "openai" | null;
+      model_used?: string | null;
+      uploaded_code_block_id?: string | null;
+      security: {
+        contains_secrets: boolean;
+        secret_labels: string[];
+        malicious: boolean;
+        malicious_reasons: string[];
+        openrouter_checked: boolean;
+        openrouter_summary?: string | null;
+      };
+    }>("POST", "/api/sharedCode", data);
+
+    return {
+      code: result.code,
+      source: result.source,
+      cacheHit: result.cache_hit,
+      similarityScore: result.similarity_score ?? null,
+      matchedCodeBlockId: result.matched_code_block_id ?? null,
+      generatedWithProvider: result.generated_with_provider ?? null,
+      modelUsed: result.model_used ?? null,
+      uploadedCodeBlockId: result.uploaded_code_block_id ?? null,
+      security: {
+        containsSecrets: result.security.contains_secrets,
+        secretLabels: result.security.secret_labels,
+        malicious: result.security.malicious,
+        maliciousReasons: result.security.malicious_reasons,
+        openrouterChecked: result.security.openrouter_checked,
+        openrouterSummary: result.security.openrouter_summary ?? null,
+      },
     };
   }
 
@@ -1678,6 +1838,37 @@ export class RaySurfer {
       timeout: options?.timeout,
       codegen,
     });
+  }
+
+  /** Run an agent chat turn with auto-persistent workspace. */
+  async chat(
+    query: string,
+    options: ChatOptions,
+  ): Promise<ChatResponse> {
+    const response = await this.request<{
+      success: boolean;
+      output: string;
+      error: string;
+      session_id: string | null;
+      duration_ms: number;
+      changed_files: string[];
+      org_workspace_files: string[];
+    }>("POST", "/api/agent-chat", {
+      user_query: query,
+      user_id: options.user,
+      org_id: options.org,
+      model: options.model ?? "sonnet",
+      max_turns: options.maxTurns ?? 8,
+    });
+    return {
+      success: response.success,
+      output: response.output,
+      error: response.error,
+      sessionId: response.session_id,
+      durationMs: response.duration_ms,
+      changedFiles: response.changed_files ?? [],
+      workspaceFiles: response.org_workspace_files ?? [],
+    };
   }
 
   /** Publish agent-accessible functions as function registry snippets. */
