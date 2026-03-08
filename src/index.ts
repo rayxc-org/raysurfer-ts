@@ -71,7 +71,7 @@ export type {
   ProgrammaticUploadOptions,
 } from "./programmatic";
 export { ProgrammaticToolCallingSession } from "./programmatic";
-export type { AgentOptions, RunResult } from "./runner";
+export type { AgentOptions, MessageParam, RunResult } from "./runner";
 export { Agent } from "./runner";
 export type {
   QueryOptions,

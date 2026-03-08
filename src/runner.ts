@@ -1,12 +1,18 @@
 /**
- * High-level Agent runner for batch query execution with
- * retroactive voting.
+ * High-level Agent runner with automatic code caching and
+ * AI-driven quality scoring.
  */
 
 import RaySurfer from "./client";
 
+export interface MessageParam {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface AgentOptions {
   orgId?: string;
+  userId?: string;
   apiKey?: string;
   baseUrl?: string;
   agentId?: string;
@@ -28,49 +34,53 @@ export interface RunResult {
 }
 
 /**
- * Batch query runner with automatic code persistence and
- * retroactive voting.
+ * Conversation runner with automatic code caching and
+ * AI-driven quality scoring.
  *
  * Wraps raysurfer.search() and raysurfer.upload() into a
- * single run() call. For each query, searches for proven
- * cached code, executes via Claude with that code injected,
- * and stores any new code generated. Tracks which cached
- * snippets contributed to each result so user feedback can
- * retroactively promote or demote them.
+ * single run() call. Accepts Anthropic-typed chat history,
+ * searches for proven cached code, executes via Claude with
+ * that code injected, and stores any new code generated.
+ * AI automatically scores code quality — no manual feedback
+ * needed.
  *
  * @example
  * ```typescript
  * import { Agent } from "raysurfer";
  *
- * const agent = new Agent({ orgId: "acme-corp" });
- * const results = await agent.run(
- *   ["Generate quarterly report", "Summarize sales data"],
- *   { userId: "user_123" },
- * );
- *
- * // User liked the first result, disliked the second
- * await agent.feedback(results[0].runId, true);
- * await agent.feedback(results[1].runId, false);
+ * const agent = new Agent({
+ *   orgId: "acme-corp",
+ *   userId: "user_123",
+ * });
+ * const result = await agent.run([
+ *   { role: "user", content: "Generate a quarterly report" },
+ * ]);
  * ```
  */
 export class Agent {
   private readonly _orgId: string | undefined;
+  private readonly _userId: string | undefined;
   private readonly _apiKey: string | undefined;
   private readonly _baseUrl: string | undefined;
   private readonly _agentId: string | undefined;
   private readonly _allowedTools: string[];
   private readonly _systemPrompt: string;
   private readonly _model: string | undefined;
-  private readonly _runLog = new Map<string, RunResult>();
   private _raysurfer: RaySurfer | undefined;
 
   constructor(options: AgentOptions = {}) {
     this._orgId = options.orgId;
+    this._userId = options.userId;
     this._apiKey = options.apiKey;
     this._baseUrl = options.baseUrl;
     this._agentId = options.agentId;
-    this._allowedTools = options.allowedTools ?? ["Read", "Write", "Bash"];
-    this._systemPrompt = options.systemPrompt ?? "You are a helpful assistant.";
+    this._allowedTools = options.allowedTools ?? [
+      "Read",
+      "Write",
+      "Bash",
+    ];
+    this._systemPrompt =
+      options.systemPrompt ?? "You are a helpful assistant.";
     this._model = options.model;
   }
 
@@ -90,21 +100,20 @@ export class Agent {
   }
 
   /**
-   * Process a batch of user queries with automatic code
-   * caching.
+   * Process a conversation with automatic code caching.
    *
-   * Each query goes through the raysurfer loop:
+   * Each conversation goes through the raysurfer loop:
    * 1. raysurfer.search() — find proven cached code
    * 2. Execute via Claude with cached code as context
    * 3. raysurfer.upload() — store new code for reuse
    *
-   * Returns RunResult objects with runIds for retroactive
-   * feedback.
+   * AI automatically scores code quality on execution —
+   * no manual feedback needed.
    */
   async run(
-    userQueries: string[],
+    messages: MessageParam[],
     _options: { userId?: string; orgId?: string } = {},
-  ): Promise<RunResult[]> {
+  ): Promise<RunResult> {
     if (!this._raysurfer) {
       await this.init();
     }
@@ -113,100 +122,63 @@ export class Agent {
       throw new Error("Failed to initialize raysurfer client.");
     }
 
-    const results: RunResult[] = [];
-    for (const query of userQueries) {
-      const runId = crypto.randomUUID();
-
-      // 1. Search for cached code
-      const searchResult = await rs.search({ task: query });
-      const codeUsed: RunResult["codeUsed"] =
-        searchResult.matches?.map((m) => ({
-          code_block_id: m.codeBlock.id,
-          filename: m.codeBlock.name,
-          description: m.codeBlock.description,
-        })) ?? [];
-
-      // 2. Execute via Claude with cached code injected
-      // The RaysurferClient handles injection + upload
-      // automatically — for the TS SDK we use the query()
-      // function which wraps the Claude Agent SDK.
-      let succeeded = false;
-      const messages: unknown[] = [];
-
-      try {
-        const { query: sdkQuery } = await import("./sdk-client");
-        for await (const msg of sdkQuery({
-          prompt: query,
-          options: {
-            allowedTools: this._allowedTools,
-            systemPrompt: this._systemPrompt,
-            model: this._model,
-          },
-        })) {
-          messages.push(msg);
-          if (
-            typeof msg === "object" &&
-            msg !== null &&
-            "type" in msg &&
-            (msg as Record<string, unknown>).type === "result" &&
-            "subtype" in msg &&
-            (msg as Record<string, unknown>).subtype === "success"
-          ) {
-            succeeded = true;
-          }
-        }
-      } catch {
-        succeeded = false;
-      }
-
-      const result: RunResult = {
-        runId,
-        query,
-        succeeded,
-        messages,
-        codeUsed,
-      };
-      this._runLog.set(runId, result);
-      results.push(result);
-    }
-
-    return results;
-  }
-
-  /**
-   * Retroactively vote on all code that contributed to a
-   * run result.
-   *
-   * Satisfied = thumbs up on every cached snippet used.
-   * Dissatisfied = thumbs down. Over time this promotes
-   * code that makes users happy and demotes code that
-   * doesn't.
-   */
-  async feedback(runId: string, satisfied: boolean): Promise<void> {
-    const result = this._runLog.get(runId);
-    if (!result) {
+    // Extract last user message as the search query
+    const lastUserMsg = [...messages]
+      .reverse()
+      .find((m) => m.role === "user");
+    if (!lastUserMsg) {
       throw new Error(
-        `Unknown runId: ${runId}. ` +
-          "Run IDs are only valid within the same Agent " +
-          "session.",
+        "Messages must contain at least one user message.",
       );
     }
+    const query = lastUserMsg.content;
+    const runId = crypto.randomUUID();
 
-    if (!this._raysurfer) {
-      throw new Error("Agent is not initialized. Call init() first.");
+    // 1. Search for cached code
+    const searchResult = await rs.search({ task: query });
+    const codeUsed: RunResult["codeUsed"] =
+      searchResult.matches?.map((m) => ({
+        code_block_id: m.codeBlock.id,
+        filename: m.codeBlock.name,
+        description: m.codeBlock.description,
+      })) ?? [];
+
+    // 2. Execute via Claude with cached code injected
+    let succeeded = false;
+    const responseMessages: unknown[] = [];
+
+    try {
+      const { query: sdkQuery } = await import("./sdk-client");
+      for await (const msg of sdkQuery({
+        prompt: query,
+        options: {
+          allowedTools: this._allowedTools,
+          systemPrompt: this._systemPrompt,
+          model: this._model,
+        },
+      })) {
+        responseMessages.push(msg);
+        if (
+          typeof msg === "object" &&
+          msg !== null &&
+          "type" in msg &&
+          (msg as Record<string, unknown>).type === "result" &&
+          "subtype" in msg &&
+          (msg as Record<string, unknown>).subtype === "success"
+        ) {
+          succeeded = true;
+        }
+      }
+    } catch {
+      succeeded = false;
     }
 
-    const rs = this._raysurfer;
-    await Promise.all(
-      result.codeUsed.map((block) =>
-        rs.voteCodeSnip({
-          task: result.query,
-          codeBlockId: block.code_block_id,
-          codeBlockName: block.filename ?? "",
-          codeBlockDescription: block.description ?? "",
-          succeeded: satisfied,
-        }),
-      ),
-    );
+    return {
+      runId,
+      query,
+      succeeded,
+      messages: responseMessages,
+      codeUsed,
+    };
   }
 }
