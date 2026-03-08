@@ -11,14 +11,17 @@ export interface MessageParam {
 }
 
 export interface AgentOptions {
-  orgId?: string;
-  userId?: string;
   apiKey?: string;
   baseUrl?: string;
   agentId?: string;
   allowedTools?: string[];
   systemPrompt?: string;
   model?: string;
+}
+
+export interface RunOptions {
+  orgId?: string;
+  userId?: string;
 }
 
 export interface RunResult {
@@ -48,18 +51,14 @@ export interface RunResult {
  * ```typescript
  * import { Agent } from "raysurfer";
  *
- * const agent = new Agent({
- *   orgId: "acme-corp",
- *   userId: "user_123",
- * });
- * const result = await agent.run([
- *   { role: "user", content: "Generate a quarterly report" },
- * ]);
+ * const agent = new Agent();
+ * const result = await agent.run(
+ *   [{ role: "user", content: "Generate a quarterly report" }],
+ *   { orgId: "acme-corp", userId: "user_123" },
+ * );
  * ```
  */
 export class Agent {
-  private readonly _orgId: string | undefined;
-  private readonly _userId: string | undefined;
   private readonly _apiKey: string | undefined;
   private readonly _baseUrl: string | undefined;
   private readonly _agentId: string | undefined;
@@ -69,8 +68,6 @@ export class Agent {
   private _raysurfer: RaySurfer | undefined;
 
   constructor(options: AgentOptions = {}) {
-    this._orgId = options.orgId;
-    this._userId = options.userId;
     this._apiKey = options.apiKey;
     this._baseUrl = options.baseUrl;
     this._agentId = options.agentId;
@@ -85,18 +82,19 @@ export class Agent {
   }
 
   /**
-   * Initialize the underlying raysurfer client. Call this
-   * before run() if not using the static create() helper.
+   * Initialize or update the underlying raysurfer client.
    */
-  async init(): Promise<this> {
-    this._raysurfer = new RaySurfer({
-      apiKey: this._apiKey,
-      baseUrl: this._baseUrl,
-      organizationId: this._orgId,
-      snipsDesired: this._orgId ? "company" : undefined,
-      agentId: this._agentId,
-    });
-    return this;
+  private ensureClient(orgId?: string): RaySurfer {
+    if (!this._raysurfer || orgId) {
+      this._raysurfer = new RaySurfer({
+        apiKey: this._apiKey,
+        baseUrl: this._baseUrl,
+        organizationId: orgId,
+        snipsDesired: orgId ? "company" : undefined,
+        agentId: this._agentId,
+      });
+    }
+    return this._raysurfer;
   }
 
   /**
@@ -112,15 +110,9 @@ export class Agent {
    */
   async run(
     messages: MessageParam[],
-    _options: { userId?: string; orgId?: string } = {},
+    options: RunOptions = {},
   ): Promise<RunResult> {
-    if (!this._raysurfer) {
-      await this.init();
-    }
-    const rs = this._raysurfer;
-    if (!rs) {
-      throw new Error("Failed to initialize raysurfer client.");
-    }
+    const rs = this.ensureClient(options.orgId);
 
     // Extract last user message as the search query
     const lastUserMsg = [...messages]
