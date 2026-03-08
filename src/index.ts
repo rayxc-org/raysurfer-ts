@@ -71,6 +71,8 @@ export type {
   ProgrammaticUploadOptions,
 } from "./programmatic";
 export { ProgrammaticToolCallingSession } from "./programmatic";
+export type { AgentOptions, RunResult } from "./runner";
+export { Agent } from "./runner";
 export type {
   QueryOptions,
   QueryParams,
@@ -108,12 +110,12 @@ export type {
   FewShotExample,
   FileWritten,
   FunctionReputation,
-  RepoFile,
   GetCodeFilesResponse,
   JsonValue,
   LogFile,
   LogSearchMatch,
   PublicSnippet,
+  RepoFile,
   RetrieveBestResponse,
   RetrieveCodeBlockResponse,
   RetrieveExecutionsResponse,
